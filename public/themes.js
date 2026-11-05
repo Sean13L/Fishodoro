@@ -29,6 +29,25 @@ const LAND = {
 const T = (id, name, pack, ui, base, sky, water, cele, fx, extra = {}) =>
   ({ id, name, pack, ui: UI[ui], ...LAND[base], sky, water, cele, fx, ...extra });
 
+export const CITY_PACK = 'Cities (follow your clock)';
+
+// What a city looks like at each time of day, unless that city has its own look for that time.
+const CITY_TIMES = {
+  dawn: { ui: 'dusk', land: 'dusk', sky: ['#3b4a8c', '#a06a9e', '#f4a68c', '#ffd9a0'], water: ['#a98aa6', '#6f6a99', '#454a80'], cele: { kind: 'sun', x: 40, y: 54, color: '#ffe2a8' }, fx: ['clouds', 'birds'], hill: ['#3b3352', '#8f7895'], glow: '#ffe0b0' },
+  day: { ui: 'day', land: 'day', sky: ['#2f7fd6', '#55a2e6', '#8fc6f0', '#d8eef8'], water: ['#3f93c4', '#2c78a8', '#1f5f8c'], cele: { kind: 'sun', x: 214, y: 18, color: '#fff06a' }, fx: ['clouds', 'birds'], hill: ['#2c4660', '#7d99b0'], glow: '#e8f4ff' },
+  sunset: { ui: 'dusk', land: 'dusk', sky: ['#2b2a66', '#7a3b7d', '#e4694e', '#ffc35c'], water: ['#b9604f', '#6f3a5e', '#3a2a55'], cele: { kind: 'sun', x: 88, y: 56, color: '#ffd86b' }, fx: ['clouds', 'birds'], hill: ['#241a3f', '#54305e'], glow: '#ffd27a' },
+  night: { ui: 'night', land: 'night', sky: ['#0a1030', '#16225a', '#2a3a80', '#4a5aa8'], water: ['#2a3f86', '#1b2b63', '#101a42'], cele: { kind: 'moon', x: 216, y: 18, color: '#f4f1c9' }, fx: ['stars'], hill: ['#0a1026', '#232d58'], glow: '#ffe9a8' },
+};
+
+const city = (id, name, own = {}, alwaysFx = []) => {
+  const times = {};
+  for (const time of Object.keys(CITY_TIMES)) {
+    const { ui, land, sky, water, cele, fx, ...extra } = { ...CITY_TIMES[time], ...own[time] };
+    times[time] = T(id, name, CITY_PACK, ui, land, sky, water, cele, [...fx, ...alwaysFx], { ...extra, city: id });
+  }
+  return { ...times.day, times };
+};
+
 export const THEMES = [
   T('dawn', 'Dawn', 'Times of day', 'dusk', 'dusk', ['#3b4a8c', '#a06a9e', '#f4a68c', '#ffd9a0'], ['#8a7fb0', '#5f5f99', '#454a80'], { kind: 'sun', x: 55, y: 62, color: '#ffe2a8' }, ['birds']),
   T('day', 'Day', 'Times of day', 'day', 'day', ['#4aa8e8', '#6dbdf0', '#93d2f5', '#bde5f8'], ['#3fa0d0', '#2d86bd', '#206ca3'], { kind: 'sun', x: 200, y: 22, color: '#fff06a' }, ['clouds', 'birds']),
@@ -61,15 +80,19 @@ export const THEMES = [
   T('sepia', 'Sepia', 'Retro palettes', 'sepia', 'day', ['#4aa8e8', '#6dbdf0', '#93d2f5', '#bde5f8'], ['#3fa0d0', '#2d86bd', '#206ca3'], { kind: 'sun', x: 200, y: 22, color: '#fff06a' }, ['clouds', 'birds'], { ramp: ['#2e1f0e', '#5f4526', '#8f7248', '#b89d70', '#d9c49c', '#f4e7cf'] }),
   T('vaporwave', 'Neon Vaporwave', 'Retro palettes', 'vapor', 'night', ['#1a0b3a', '#4b1a7a', '#c0267e', '#ff71ce'], ['#b967ff', '#7a35c2', '#01cdfe'], { kind: 'sun', x: 120, y: 46, color: '#fffb96', stripes: true }, ['stars'], { hill: ['#2e1270', '#220c58'], land: ['#05ffa1', '#3a1a80'], wood: ['#b967ff', '#7a35c2'] }),
 
-  T('newyork', 'New York', 'Cities', 'dusk', 'dusk', ['#2b2a66', '#7a3b7d', '#e4694e', '#ffc35c'], ['#b9604f', '#6f3a5e', '#3a2a55'], { kind: 'sun', x: 88, y: 56, color: '#ffd86b' }, ['clouds', 'birds'], { city: 'newyork', hill: ['#241a3f', '#54305e'], glow: '#ffd27a' }),
-  T('chicago', 'Chicago', 'Cities', 'night', 'night', ['#101d4d', '#21367a', '#4a5aa8', '#9a86c2'], ['#3c5aa0', '#263d7a', '#162658'], { kind: 'moon', x: 216, y: 18, color: '#f4f1c9' }, ['stars'], { city: 'chicago', hill: ['#0e1530', '#2a3563'], glow: '#ffe9a8' }),
-  T('toronto', 'Toronto', 'Cities', 'day', 'day', ['#2f7fd6', '#55a2e6', '#8fc6f0', '#d8eef8'], ['#3f93c4', '#2c78a8', '#1f5f8c'], { kind: 'sun', x: 206, y: 18, color: '#fff06a' }, ['clouds', 'birds'], { city: 'toronto', hill: ['#2c4660', '#7d99b0'], glow: '#e8f4ff' }),
-  T('tokyo', 'Tokyo', 'Cities', 'vapor', 'night', ['#0b0726', '#1c0f4d', '#4a1a7a', '#a02a8c'], ['#5a1f7a', '#2f1259', '#140a33'], { kind: 'moon', x: 216, y: 18, color: '#ffe9f5' }, ['stars'], { city: 'tokyo', hill: ['#0c0820', '#2c1a5c'], glow: '#ff9de2' }),
-  T('london', 'London', 'Cities', 'rain', 'day', ['#6d7885', '#87919c', '#a3abb3', '#c0c5c9'], ['#6a7a86', '#56656f', '#44525b'], null, ['clouds', 'rain'], { city: 'london', hill: ['#3a434e', '#6d7885'], glow: '#ffd98a', cloud: '#59636f' }),
-  T('paris', 'Paris', 'Cities', 'blossom', 'dusk', ['#5a79c4', '#b18fc7', '#f4b8a8', '#ffe2b0'], ['#c9a3b0', '#8f86ad', '#5f6a96'], { kind: 'sun', x: 40, y: 54, color: '#fff0c2' }, ['clouds', 'birds'], { city: 'paris', hill: ['#4a3f5e', '#9c82a5'], glow: '#ffe9b0' }),
-  T('sanfrancisco', 'San Francisco', 'Cities', 'autumn', 'dusk', ['#3f5f9c', '#a884b0', '#f0a080', '#f7cf9a'], ['#e09080', '#7f6a8c', '#3f4a70'], { kind: 'sun', x: 210, y: 52, color: '#ffe08a' }, ['clouds'], { city: 'sanfrancisco', hill: ['#2c2f4f', '#7f6f8f'], glow: '#ffd98a' }),
-  T('dubai', 'Dubai', 'Cities', 'dusk', 'night', ['#1f2a5c', '#6a4a8c', '#e08a5c', '#f7c978'], ['#d98a5f', '#6a6a8c', '#2f3f6c'], { kind: 'sun', x: 60, y: 58, color: '#ffd26b' }, ['stars'], { city: 'dubai', hill: ['#1c1a33', '#b07f6a'], glow: '#ffdf9e' }),
-  T('sydney', 'Sydney', 'Cities', 'tropical', 'day', ['#1f8ee0', '#4aa8ea', '#86cbf2', '#c6ecf8'], ['#1fa3c9', '#1585ad', '#0e6a90'], { kind: 'sun', x: 30, y: 18, color: '#fff23b', rays: true }, ['clouds', 'birds'], { city: 'sydney', hill: ['#2f5f7a', '#8fb7c8'], glow: '#fff6c9' }),
+  city('newyork', 'New York'),
+  city('chicago', 'Chicago', { night: { sky: ['#101d4d', '#21367a', '#4a5aa8', '#9a86c2'], water: ['#3c5aa0', '#263d7a', '#162658'], hill: ['#0e1530', '#2a3563'] } }),
+  city('toronto', 'Toronto'),
+  city('tokyo', 'Tokyo', { night: { ui: 'vapor', sky: ['#0b0726', '#1c0f4d', '#4a1a7a', '#a02a8c'], water: ['#5a1f7a', '#2f1259', '#140a33'], cele: { kind: 'moon', x: 216, y: 18, color: '#ffe9f5' }, hill: ['#0c0820', '#2c1a5c'], glow: '#ff9de2' } }),
+  city('london', 'London', { day: { ui: 'rain', sky: ['#6d7885', '#87919c', '#a3abb3', '#c0c5c9'], water: ['#6a7a86', '#56656f', '#44525b'], cele: null, fx: ['clouds'], hill: ['#3a434e', '#6d7885'], glow: '#ffd98a', cloud: '#59636f' } }, ['rain']),
+  city('paris', 'Paris', { dawn: { ui: 'blossom', sky: ['#5a79c4', '#b18fc7', '#f4b8a8', '#ffe2b0'], water: ['#c9a3b0', '#8f86ad', '#5f6a96'], cele: { kind: 'sun', x: 40, y: 54, color: '#fff0c2' }, hill: ['#4a3f5e', '#9c82a5'], glow: '#ffe9b0' } }),
+  city('sanfrancisco', 'San Francisco', { sunset: { ui: 'autumn', sky: ['#3f5f9c', '#a884b0', '#f0a080', '#f7cf9a'], water: ['#e09080', '#7f6a8c', '#3f4a70'], cele: { kind: 'sun', x: 210, y: 52, color: '#ffe08a' }, fx: ['clouds'], hill: ['#2c2f4f', '#7f6f8f'], glow: '#ffd98a' } }),
+  city('dubai', 'Dubai', { sunset: { sky: ['#1f2a5c', '#6a4a8c', '#e08a5c', '#f7c978'], water: ['#d98a5f', '#6a6a8c', '#2f3f6c'], cele: { kind: 'sun', x: 60, y: 58, color: '#ffd26b' }, fx: ['stars'], hill: ['#1c1a33', '#b07f6a'], glow: '#ffdf9e' } }),
+  city('sydney', 'Sydney', { day: { ui: 'tropical', sky: ['#1f8ee0', '#4aa8ea', '#86cbf2', '#c6ecf8'], water: ['#1fa3c9', '#1585ad', '#0e6a90'], cele: { kind: 'sun', x: 30, y: 18, color: '#fff23b', rays: true }, hill: ['#2f5f7a', '#8fb7c8'], glow: '#fff6c9' } }),
+  city('seoul', 'Seoul', { night: { sky: ['#0a1430', '#1a2f63', '#3a5a9c', '#7d96c8'], water: ['#3a5a9c', '#22386e', '#121f45'], hill: ['#0b1228', '#2a3c6b'], glow: '#bfe3ff' } }),
+  city('hongkong', 'Hong Kong', { night: { ui: 'cosmic', sky: ['#070b24', '#141a4a', '#3a1f6e', '#7a2a7e'], water: ['#3a2a7e', '#1f1a5c', '#0d0d33'], hill: ['#090a20', '#1c1f4a'], glow: '#7cf5e6' } }),
+  city('rio', 'Rio de Janeiro, Brazil', { day: { ui: 'tropical', sky: ['#1590e6', '#3fb0ee', '#7fd4f2', '#c6f0ee'], water: ['#19bfc9', '#10a0b0', '#0a7f96'], cele: { kind: 'sun', x: 40, y: 18, color: '#fff23b', rays: true }, hill: ['#3a6a52', '#6f9a7f'], glow: '#fff6c9' } }),
+  city('chongqing', 'Chongqing', { dawn: { ui: 'sepia', sky: ['#7a8aa6', '#a8a6b8', '#d6c2b8', '#f0d8b8'], water: ['#a89a8c', '#857f7c', '#5f6168'], cele: null, fx: ['birds'], hill: ['#3f4150', '#8c8b96'], glow: '#ffd98a' }, night: { sky: ['#160d1f', '#2e1a33', '#5c2a3f', '#a14a3f'], water: ['#6e3238', '#3c1f30', '#1a1020'], cele: null, hill: ['#120b18', '#3a2235'], glow: '#ffc36b' } }),
 ];
 
 export const ADAPTIVE = 'adaptive';
@@ -84,5 +107,7 @@ export function adaptiveId(hour) {
   return 'night';
 }
 
-export const resolveSky = (id, hour = new Date().getHours()) =>
-  THEMES.find((t) => t.id === (id === ADAPTIVE ? adaptiveId(hour) : id)) ?? THEMES[1];
+export function resolveSky(id, hour = new Date().getHours()) {
+  const theme = THEMES.find((t) => t.id === (id === ADAPTIVE ? adaptiveId(hour) : id)) ?? THEMES[1];
+  return theme.times?.[adaptiveId(hour)] ?? theme;
+}

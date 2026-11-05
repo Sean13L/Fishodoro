@@ -439,6 +439,24 @@ await step('fast test timer: a guest catch completes in real time when the serve
   await page.waitForSelector('#reveal[open]', { timeout: 10000 });
   await ctx.close();
 });
+await step('a city sky changes with the clock, even while the page stays open', async () => {
+  const { ctx, page } = await open();
+  await page.click('#cookies-essential');
+  const pick = (v) => page.evaluate((x) => { const s = document.querySelector('#pick-sky'); s.value = x; s.dispatchEvent(new Event('change')); }, v);
+  const plate = () => page.evaluate(() => document.documentElement.style.getPropertyValue('--plate'));
+  await page.clock.install({ time: new Date('2026-06-15T16:59:30') });
+  await page.clock.resume();
+  await page.reload();
+  await page.waitForTimeout(300);
+  await pick('hongkong');
+  await page.waitForTimeout(150);
+  const afternoon = await plate();
+  assert.equal(afternoon, '#fff4d6', 'daytime colours at 4:59 pm');
+  await page.clock.fastForward(60 * 1000);
+  await page.waitForFunction((before) => document.documentElement.style.getPropertyValue('--plate') !== before, afternoon, { timeout: 5000 });
+  assert.equal(await plate(), '#2d1b3d', 'sunset colours at 5:00 pm, without a reload');
+  await ctx.close();
+});
 await step('custom focus minutes: valid values apply and are remembered, bad ones are refused', async () => {
   const { ctx, page } = await open();
   await page.click('#cookies-allow');

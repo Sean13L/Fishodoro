@@ -151,6 +151,48 @@ export function drawCity(g, th, H) {
       }
       row(226, W, 8, 18, near, true);
     },
+    seoul() {
+      triangle(36, 30, 104, far); triangle(112, 22, 70, far); // Mountain ridges
+      for (let x = 56; x < 96; x++) { const k = (x - 76) / 20; box(x, 1, Math.round(Math.sqrt(1 - k * k) * 16), near); } // Forested hill
+      floating(75, 3, 14, 18); floating(73, 7, 28, 4); rect(g, 73, H - 30, 7, 1, lit); spire(76, 32, 5); // Tower on the hill
+      row(0, 56, 6, 14, near, true);
+      for (let x = 98; x < 168; x += 9) tower(x, 8, 12 + ((x * 7) % 3) * 4); // Rows of apartment blocks
+      for (let i = 0; i < 58; i++) box(170 + Math.floor(i / 10), 13 - Math.floor(i / 5), i + 1); windows(171, 11, 40, 0.3); beacons.push([176, H - 59]); // Tapered supertall
+      row(186, W, 10, 26, near, true);
+    },
+    hongkong() {
+      for (let x = 0; x < W; x++) box(x, 1, Math.round(30 + Math.sin(x * 0.03 + 0.8) * 8 + Math.sin(x * 0.09) * 3), far); // The Peak, behind the harbour
+      row(0, 100, 12, 26, near, true);
+      row(100, 150, 16, 28, near, true);
+      box(152, 13, 42); triangle(158, 58, 13, near); for (const [a, b] of [[8, 22], [22, 36]]) { line(152, a, 164, b, lit); line(164, a, 152, b, lit); } spire(155, 48, 8); spire(161, 48, 8); // Angular bank tower
+      row(167, 180, 18, 32, near, true);
+      box(182, 11, 46); box(183, 9, 52); box(185, 5, 58); windows(183, 9, 44, 0.3); spire(187, 58, 4); // Stepped tower
+      row(194, 210, 20, 34, near, true);
+      tower(211, 9, 44);
+      row(220, W, 14, 28, near, true);
+      for (const [x, color] of [[30, '#ff71ce'], [62, '#01cdfe'], [108, '#fffb96'], [136, '#ff71ce'], [197, '#01cdfe']]) rect(g, x, H - 8, 7, 2, color); // Harbour signs
+    },
+    rio() {
+      const hill = (cx, r, h, color) => { for (let x = cx - r; x <= cx + r; x++) { const k = (x - cx) / r; box(x, 1, Math.round(Math.sqrt(1 - k * k) * h), color); } };
+      triangle(160, 46, 72, far); floating(159, 2, 46, 6, '#f6f4ec'); floating(156, 8, 49, 1, '#f6f4ec'); // Peak and open-armed statue
+      hill(30, 36, 18, far);
+      row(0, 112, 5, 13, near, true);
+      hill(178, 13, 18, near); hill(212, 20, 42, near); // Two rounded granite hills
+      line(180, 18, 208, 41, lit); floating(193, 3, 28, 2, '#e53935'); beacons.push([212, H - 42]); // Cable car
+      row(120, 164, 5, 12, near, true);
+      rect(g, 0, H - 2, W, 2, '#f0d98a'); // Beach
+    },
+    chongqing() {
+      for (let x = 0; x < W; x++) box(x, 1, Math.round(16 + Math.sin(x * 0.05) * 5 + Math.sin(x * 0.13 + 1) * 3), far); // Steep hillside
+      row(0, 112, 18, 36, far, true);
+      for (let x = 2; x < 100; x += 8) tower(x, 7, 12 + ((x * 5) % 4) * 4);
+      for (let i = 0; i < 5; i++) { box(104 + i * 3, 42 - i * 6, 6 + i * 5); windows(104 + i * 3, 42 - i * 6, 6 + i * 5, 0.6); } // Stacked riverside terraces
+      line(0, 16, 104, 30, lit); floating(50, 5, 19, 3, '#e53935'); // River cable car
+      row(148, 164, 14, 30, near, true);
+      for (const [x, h] of [[166, 44], [176, 50], [186, 50], [196, 44]]) { tower(x, 7, h); floating(x + 1, 5, h, 2); beacons.push([x + 3, H - h - 2]); } // Row of slim towers
+      floating(166, 37, 38, 3); rect(g, 167, H - 40, 35, 1, lit); // Sky bridge joining them
+      row(206, W, 12, 30, near, true);
+    },
   })[th.city]();
   return beacons;
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RARITIES } from '../public/fish.js';
-import { ADAPTIVE, adaptiveId, resolveSky, SKY_IDS, THEMES } from '../public/themes.js';
+import { ADAPTIVE, adaptiveId, CITY_PACK, resolveSky, SKY_IDS, THEMES } from '../public/themes.js';
 
 const channel = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const luminance = (hex) => {
@@ -14,7 +14,7 @@ const ratio = (a, b) => {
 };
 
 test('every theme meets WCAG AA for text and focus rings', () => {
-  for (const { id, ui } of THEMES) {
+  for (const { id, ui } of THEMES.flatMap((t) => (t.times ? Object.values(t.times) : [t]))) {
     assert.ok(ratio(ui.ink, ui.plate) >= 4.5, `${id}: ink on plate is ${ratio(ui.ink, ui.plate).toFixed(2)}`);
     assert.ok(ratio(ui.accentInk, ui.accent) >= 4.5, `${id}: accent button is ${ratio(ui.accentInk, ui.accent).toFixed(2)}`);
     assert.ok(ratio(ui.focus, ui.plate) >= 3, `${id}: focus ring is ${ratio(ui.focus, ui.plate).toFixed(2)}`);
@@ -32,22 +32,34 @@ test('all requested skies exist, with unique ids', () => {
   for (const id of ['dawn', 'day', 'sunset', 'night', 'sunny', 'black', 'purple', 'cosmic', 'rain', 'storm', 'snow', 'fog', 'rainbow', 'blossom', 'autumn', 'winter', 'tropical', 'aurora', 'bloodmoon', 'volcano', 'twinmoons', 'meteor', 'handheld', 'arcade', 'sepia', 'vaporwave']) assert.ok(SKY_IDS.includes(id), id);
 });
 
-test('every city skyline draws inside the scene, with tower lights in the sky', async () => {
-  const cities = THEMES.filter((t) => t.pack === 'Cities');
-  assert.deepEqual(cities.map((t) => t.id), ['newyork', 'chicago', 'toronto', 'tokyo', 'london', 'paris', 'sanfrancisco', 'dubai', 'sydney']);
+test('every city looks different at each time of day, and draws inside the scene', async () => {
+  const cities = THEMES.filter((t) => t.pack === CITY_PACK);
+  assert.deepEqual(cities.map((t) => t.id), ['newyork', 'chicago', 'toronto', 'tokyo', 'london', 'paris', 'sanfrancisco', 'dubai', 'sydney', 'seoul', 'hongkong', 'rio', 'chongqing']);
   const { drawCity } = await import('../public/cities.js');
-  for (const theme of cities) {
-    assert.equal(theme.city, theme.id);
-    assert.ok(theme.glow && theme.hill.length === 2, theme.id);
-    let painted = 0;
-    const canvas = { set fillStyle(color) { assert.match(String(color), /^#[0-9a-f]{6}$/i, theme.id); }, fillRect(x, y, w, h) { assert.ok(Number.isFinite(x + y + w + h), `${theme.id} drew a bad rectangle`); if (w > 0 && h > 0) painted++; } };
-    for (const horizon of [72, 76, 78, 108]) {
-      const beacons = drawCity(canvas, theme, horizon);
-      assert.ok(beacons.length > 0, `${theme.id} has at least one tower light`);
-      for (const [x, y] of beacons) assert.ok(x >= 0 && x < 240 && y >= 0 && y < horizon, `${theme.id} light at ${x},${y}`);
+  for (const { id, times } of cities) {
+    assert.deepEqual(Object.keys(times), ['dawn', 'day', 'sunset', 'night'], id);
+    assert.equal(new Set(Object.values(times).map((t) => t.sky.join())).size, 4, `${id} needs four different skies`);
+    for (const theme of Object.values(times)) {
+      assert.equal(theme.city, id);
+      assert.ok(theme.glow && theme.hill.length === 2 && theme.ui.plate, id);
+      let painted = 0;
+      const canvas = { set fillStyle(color) { assert.match(String(color), /^#[0-9a-f]{6}$/i, id); }, fillRect(x, y, w, h) { assert.ok(Number.isFinite(x + y + w + h), `${id} drew a bad rectangle`); if (w > 0 && h > 0) painted++; } };
+      for (const horizon of [72, 76, 78, 108]) {
+        const beacons = drawCity(canvas, theme, horizon);
+        assert.ok(beacons.length > 0, `${id} has at least one tower light`);
+        for (const [x, y] of beacons) assert.ok(x >= 0 && x < 240 && y >= 0 && y < horizon, `${id} light at ${x},${y}`);
+      }
+      assert.ok(painted > 100, id);
     }
-    assert.ok(painted > 100, theme.id);
   }
+});
+
+test('city skies follow the local hour through the whole day', () => {
+  const look = (hour) => { const t = resolveSky('tokyo', hour); return THEMES.find((x) => x.id === 'tokyo').times[adaptiveId(hour)] === t; };
+  for (let hour = 0; hour < 24; hour++) assert.ok(look(hour), `hour ${hour}`);
+  assert.notEqual(resolveSky('tokyo', 12), resolveSky('tokyo', 22));
+  assert.equal(resolveSky('tokyo', 22).id, 'tokyo');
+  assert.equal(resolveSky('tokyo', 3), resolveSky('tokyo', 23), 'the same look is the same object, so the page only repaints on a real change');
 });
 
 test('adaptive follows the local hour through the whole day', () => {

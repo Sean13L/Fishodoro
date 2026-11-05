@@ -3,7 +3,7 @@ import { fishName, fishWeight, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPEC
 import { ANGLERS, cleanPrefs, FOCUS_MINUTES, isFocusLength, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
 import { drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
-import { ADAPTIVE, PACKS, THEMES } from './themes.js';
+import { ADAPTIVE, PACKS, resolveSky, THEMES } from './themes.js';
 import { createWorld } from './world.js';
 
 const $ = (s) => document.querySelector(s);
@@ -254,7 +254,6 @@ $('#stop').addEventListener('click', async () => {
   } catch (err) { notice(err.message); }
 });
 
-let lastHour = new Date().getHours();
 function tick() {
   const now = Date.now();
   const due = queue.filter((job) => job.at <= now);
@@ -270,8 +269,8 @@ function tick() {
     }
   }
   render();
-  if (prefs.sky === ADAPTIVE && new Date().getHours() !== lastHour) {
-    lastHour = new Date().getHours();
+  // Adaptive and city skies change with the clock while the page stays open.
+  if (resolveSky(prefs.sky) !== world.theme()) {
     world.refreshSky();
     applyTheme();
     describeWorld();
