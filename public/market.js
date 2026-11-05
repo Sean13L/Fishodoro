@@ -1,8 +1,8 @@
 // Prices and catalog, shared by the browser (display) and the server (the only place that charges or pays).
 import { SIZES } from './fish.js';
 
-export const RARITY_VALUE = { common: 5, uncommon: 12, rare: 30, epic: 80, gold: 250, black: 800, cosmic: 2500 };
-export const SIZE_MULTIPLIER = { tiny: 1, small: 1.5, medium: 2.5, big: 4, huge: 8 };
+export const RARITY_VALUE = { common: 15, uncommon: 36, rare: 90, epic: 240, gold: 750, black: 2400, cosmic: 7500 };
+export const SIZE_MULTIPLIER = { tiny: 3, small: 4.5, medium: 7.5, big: 12, huge: 24 };
 
 // Rarer and bigger sells for more, and a heavier fish earns up to 25% more within its size.
 export function fishPrice({ rarity, size, weight }) {
