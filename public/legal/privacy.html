@@ -26,7 +26,7 @@
         <tr><td>Fish, look and sound settings, and your current focus session</td><td>The service itself</td><td>Until you delete your account</td></tr>
         <tr><td>2FA secret (encrypted) and hashed recovery codes, if you turn on 2FA</td><td>Account security</td><td>Until you turn off 2FA or delete your account</td></tr>
         <tr><td>Date and version of the Terms and Privacy Policy you accepted</td><td>Proof of consent</td><td>Until you delete your account</td></tr>
-        <tr><td>Hashed sign-in attempt records, derived from your IP address or email</td><td>Stopping password-guessing attacks</td><td>Up to 24 hours</td></tr>
+        <tr><td>Hashed sign-in attempt records, derived from your IP address or email</td><td>Stopping password-guessing attacks</td><td>Up to 2 days</td></tr>
         <tr><td>Session token, hashed</td><td>Keeping you signed in</td><td>Up to 30 days</td></tr>
       </tbody>
     </table>
@@ -41,13 +41,14 @@
 
     <h2>Who else receives data</h2>
     <ul>
-      <li><strong>Our email provider</strong> receives your email address and the message when we send you a security email.</li>
-      <li><strong>Our hosting provider</strong> stores the database and processes web requests for us, and may keep short-lived technical logs.</li>
+      <li><strong>Brevo</strong> sends our security emails, so it receives your email address and the message.</li>
+      <li><strong>Vercel</strong> runs the app and handles web requests, and may keep short-lived technical logs.</li>
+      <li><strong>Turso</strong> stores the database.</li>
     </ul>
     <p>We stay responsible for the data we give these providers and use contracts to require comparable protection.</p>
 
     <h2>Where your data is stored</h2>
-    <p>Our database is stored in {{DATA_LOCATION}}. Our providers may process data in other countries. While data is outside Canada, the laws of that country apply and may let its courts or authorities access it.</p>
+    <p>Our app and database run in {{DATA_LOCATION}}. Requests may pass through Vercel's network elsewhere on their way there, and Brevo may process email outside Canada. While data is outside Canada, the laws of that country apply and may let its courts or authorities access it.</p>
 
     <h2>Your rights</h2>
     <p>You can ask to see or correct your personal information, ask what we do with it, and withdraw your consent.</p>

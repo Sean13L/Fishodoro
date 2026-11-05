@@ -1,6 +1,7 @@
 node_modules/
 .claude/settings.local.json
 data/
+.vercel/
 .env
 .env.*
 !.env.example

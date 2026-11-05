@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+data/
+test/
+README.md
+SECURITY.md
+start.js

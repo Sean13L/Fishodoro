@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.7"
+    "node": "24.x"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env server.js",
-    "start:prod": "node --disable-warning=ExperimentalWarning --env-file=.env.production server.js",
-    "dev:fast": "FAST_TEST_TIMER=1 node --disable-warning=ExperimentalWarning server.js",
+    "start": "node --env-file-if-exists=.env start.js",
+    "dev:fast": "FAST_TEST_TIMER=1 node start.js",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
     "test:e2e": "node --disable-warning=ExperimentalWarning test/e2e.mjs"
   },
   "dependencies": {
+    "@libsql/client": "0.18.0",
+    "@vercel/functions": "3.10.6",
     "qrcode-generator": "2.0.4"
   },
   "devDependencies": {

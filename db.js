@@ -1,7 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
@@ -18,17 +14,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
   expires_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS focus (
-  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
   minutes INTEGER NOT NULL,
   started_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS catches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
   species TEXT NOT NULL,
   rarity TEXT NOT NULL,
   size TEXT NOT NULL,
@@ -38,54 +34,48 @@ CREATE TABLE IF NOT EXISTS catches (
 CREATE INDEX IF NOT EXISTS catches_user ON catches(user_id, id);
 CREATE TABLE IF NOT EXISTS tokens (
   hash TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id),
   kind TEXT NOT NULL,
   expires_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS recovery (
   hash TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  user_id INTEGER NOT NULL REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS attempts (key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS attempts_key ON attempts(key, at);
 `;
 
 const WEEK = 7 * 864e5;
+const USER_TABLES = ['focus', 'catches', 'tokens', 'recovery', 'sessions'];
 
-// All SQL runs through parameterized statements from here, which keeps a driver swap small.
-export function openDb(file = ':memory:') {
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const raw = new DatabaseSync(file);
-  if (file !== ':memory:') fs.chmodSync(file, 0o600);
-  raw.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON;');
-  raw.exec(SCHEMA);
+const plain = ({ columns, rows }) => rows.map((row) => Object.fromEntries(columns.map((c) => [c, row[c]])));
 
-  const cache = new Map();
-  const q = (sql) => cache.get(sql) ?? cache.set(sql, raw.prepare(sql)).get(sql);
-
+// Wraps a libSQL client: Turso over HTTP on Vercel, a local file in development.
+// All SQL runs through parameterized statements from here.
+export function wrapClient(client) {
+  const batch = (statements) => client.batch(statements.map(([sql, ...args]) => ({ sql, args })), 'write');
   return {
-    get: (sql, ...args) => q(sql).get(...args),
-    all: (sql, ...args) => q(sql).all(...args),
-    run: (sql, ...args) => q(sql).run(...args),
-    tx(fn) {
-      raw.exec('BEGIN IMMEDIATE');
-      try {
-        const out = fn();
-        raw.exec('COMMIT');
-        return out;
-      } catch (err) {
-        raw.exec('ROLLBACK');
-        throw err;
-      }
-    },
+    get: async (sql, ...args) => plain(await client.execute({ sql, args }))[0],
+    all: async (sql, ...args) => plain(await client.execute({ sql, args })),
+    run: (sql, ...args) => client.execute({ sql, args }),
+    // Runs every statement in one transaction, in a single round trip.
+    batch,
+    migrate: () => client.batch(SCHEMA.split(';').map((sql) => sql.trim()).filter(Boolean), 'write'),
+    // Deleted child-first and by name, so removal never depends on foreign key settings.
+    deleteUser: (id, ...extra) => batch([...USER_TABLES.map((table) => [`DELETE FROM ${table} WHERE user_id = ?`, id]), ['DELETE FROM users WHERE id = ?', id], ...extra]),
     // Removes data we no longer need, as the Privacy Policy promises.
     purge(now) {
-      q('DELETE FROM sessions WHERE expires_at < ?').run(now);
-      q('DELETE FROM tokens WHERE expires_at < ?').run(now);
-      q('DELETE FROM attempts WHERE at < ?').run(now - 864e5);
-      q('DELETE FROM focus WHERE started_at + minutes * 60000 + 864e5 < ?').run(now);
-      q('DELETE FROM users WHERE verified = 0 AND created_at < ?').run(now - WEEK);
+      const stale = 'SELECT id FROM users WHERE verified = 0 AND created_at < ?';
+      return batch([
+        ['DELETE FROM sessions WHERE expires_at < ?', now],
+        ['DELETE FROM tokens WHERE expires_at < ?', now],
+        ['DELETE FROM attempts WHERE at < ?', now - 864e5],
+        ['DELETE FROM focus WHERE started_at + minutes * 60000 + 864e5 < ?', now],
+        ...USER_TABLES.map((table) => [`DELETE FROM ${table} WHERE user_id IN (${stale})`, now - WEEK]),
+        ['DELETE FROM users WHERE verified = 0 AND created_at < ?', now - WEEK],
+      ]);
     },
-    close: () => raw.close(),
+    close: () => client.close(),
   };
 }

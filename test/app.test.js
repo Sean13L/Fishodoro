@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { openDb } from '../db.js';
 import { RARITIES, rollFish, SIZES } from '../public/fish.js';
 import { DEFAULT_PREFS } from '../public/options.js';
 import { passwordProblem } from '../public/password.js';
 import { createApp, httpMailer, loadConfig, totpCode } from '../server.js';
+import { openTestDb } from './helpers.js';
 
 const PASSWORD = 'gentle-river-otter-42';
-let server, base, db, clock, mails;
+let server, base, db, clock, mails, pending;
 
 const config = loadConfig({ APP_URL: 'http://localhost:3000' });
 
@@ -23,6 +23,7 @@ async function call(pathname, { body, cookie, origin = config.origin, method = b
     body: raw ?? (body === undefined ? undefined : JSON.stringify(body)),
   });
   const text = await res.text();
+  await Promise.all(pending);
   let data;
   try { data = JSON.parse(text); } catch { data = text; }
   return { status: res.status, data, res };
@@ -45,15 +46,16 @@ async function login(email, password = PASSWORD, code) {
 
 before(async () => {
   clock = { now: Date.UTC(2026, 10, 4, 12) };
-  db = openDb();
+  db = await openTestDb();
   mails = [];
-  server = http.createServer(createApp({ config, db, now: () => clock.now, mail: async (m) => { mails.push(m); } }));
+  pending = [];
+  server = http.createServer(createApp({ config, db: db.app, now: () => clock.now, mail: async (m) => { mails.push(m); }, defer: (work) => pending.push(work) }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(() => { server.close(); db.close(); });
 beforeEach(() => {
-  for (const table of ['users', 'attempts']) db.run(`DELETE FROM ${table}`);
+  for (const table of ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'users', 'attempts']) db.run(`DELETE FROM ${table}`);
   mails.length = 0;
 });
 
@@ -143,17 +145,18 @@ test('the session cookie is HttpOnly and SameSite=Strict, and the token is store
 });
 
 test('a production cookie uses __Host- and Secure', () => {
-  const prod = loadConfig({ NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e@e.co', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'https://m.example', MAIL_API_KEY: 'k', MAIL_FROM: 'f@e.co' });
+  const prod = loadConfig({ NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e@e.co', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', TURSO_DATABASE_URL: 'libsql://x', TURSO_AUTH_TOKEN: 't', CRON_SECRET: 'c', MAIL_API_KEY: 'k', MAIL_FROM: 'f@e.co' });
   assert.equal(prod.secure, true);
   assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /Missing required settings/);
   assert.equal(prod.minuteMs, 60_000);
-  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'http://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /https/);
-  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'https://x.example', APP_SECRET: 'short', OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /APP_SECRET/);
+  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'http://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', TURSO_DATABASE_URL: 'libsql://x', TURSO_AUTH_TOKEN: 't', CRON_SECRET: 'c', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /https/);
+  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'https://x.example', APP_SECRET: 'short', OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', TURSO_DATABASE_URL: 'libsql://x', TURSO_AUTH_TOKEN: 't', CRON_SECRET: 'c', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /APP_SECRET/);
 });
 
 test('development fallbacks can never run on a reachable address, even if NODE_ENV is forgotten', () => {
   assert.throws(() => loadConfig({ APP_URL: 'https://fish.example' }), /Missing required settings/);
   assert.throws(() => loadConfig({ HOST: '0.0.0.0' }), /Missing required settings/);
+  assert.throws(() => loadConfig({ VERCEL: '1' }), /Missing required settings/);
   assert.equal(loadConfig({ HOST: '127.0.0.1' }).production, false);
   assert.equal(loadConfig({ APP_URL: 'http://localhost:4173' }).production, false);
 });
@@ -163,7 +166,7 @@ test('the fast test timer works locally and can never reach a real deployment', 
   assert.equal(loadConfig({ FAST_TEST_TIMER: '0' }).minuteMs, 60_000);
   assert.equal(loadConfig({ FAST_TEST_TIMER: '1' }).minuteMs, 1000);
   assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', APP_URL: 'https://fish.example' }), /local testing only/);
-  assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /local testing only/);
+  assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', TURSO_DATABASE_URL: 'libsql://x', TURSO_AUTH_TOKEN: 't', CRON_SECRET: 'c', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /local testing only/);
 });
 
 test('emails go out in the format the provider expects, and failures surface', async () => {
@@ -175,16 +178,40 @@ test('emails go out in the format the provider expects, and failures surface', a
     req.on('end', () => { seen.push({ method: req.method, headers: req.headers, body: JSON.parse(raw) }); res.writeHead(status); res.end('{}'); });
   });
   await new Promise((r) => provider.listen(0, '127.0.0.1', r));
-  const send = httpMailer({ mail: { url: `http://127.0.0.1:${provider.address().port}/emails`, key: 're_test', from: 'Fishodoro <s@fish.example>' } });
+  const send = httpMailer({ mail: { url: `http://127.0.0.1:${provider.address().port}/emails`, key: 'brevo_test', from: 's@fish.example' } });
   await send({ to: 'a@example.com', subject: 'Hi', text: 'Body' });
   assert.equal(seen[0].method, 'POST');
-  assert.equal(seen[0].headers.authorization, 'Bearer re_test');
+  assert.equal(seen[0].headers['api-key'], 'brevo_test');
   assert.equal(seen[0].headers['user-agent'], 'Fishodoro/1.0');
   assert.equal(seen[0].headers['content-type'], 'application/json');
-  assert.deepEqual(seen[0].body, { from: 'Fishodoro <s@fish.example>', to: 'a@example.com', subject: 'Hi', text: 'Body' });
+  assert.deepEqual(seen[0].body, { sender: { name: 'Fishodoro', email: 's@fish.example' }, to: [{ email: 'a@example.com' }], subject: 'Hi', textContent: 'Body' });
   status = 403;
   await assert.rejects(send({ to: 'a@example.com', subject: 'Hi', text: 'Body' }), /403/);
   provider.close();
+});
+
+test('the daily purge route only answers Vercel Cron\'s secret', async () => {
+  assert.equal((await call('/api/cron/purge')).status, 404, 'no secret configured here');
+  const cfg = loadConfig({ APP_URL: 'http://localhost:3000', CRON_SECRET: 'cron-secret-value' });
+  const tempDb = await openTestDb();
+  const app = http.createServer(createApp({ config: cfg, db: tempDb.app, mail: async () => {} }));
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  app.unref(); // A failed assertion must not leave the test run hanging.
+  const at = `http://127.0.0.1:${app.address().port}/api/cron/purge`;
+  assert.equal((await fetch(at)).status, 404);
+  assert.equal((await fetch(at, { headers: { authorization: 'Bearer wrong' } })).status, 404);
+  assert.equal((await fetch(at, { headers: { authorization: 'Bearer cron-secret-value' } })).status, 200);
+  app.close();
+  tempDb.close();
+});
+
+test('Vercel settings route everything through the app and keep secrets out of uploads', () => {
+  const vercel = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  assert.deepEqual(vercel.routes, [{ src: '/(.*)', dest: '/api/index.js' }], 'static files must not bypass the security headers');
+  assert.deepEqual(vercel.regions, ['yul1']);
+  assert.equal(vercel.functions['api/index.js'].includeFiles, 'public/**');
+  const ignore = fs.readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').split('\n');
+  for (const rule of ['.env', '.env.*', 'data/']) assert.ok(ignore.includes(rule), rule);
 });
 
 test('private routes reject anonymous requests', async () => {
@@ -221,6 +248,13 @@ test('login is rate limited per account, even with the right password afterwards
   clock.now += 16 * 60_000;
   await login('limit@example.com');
   clock.now -= 16 * 60_000;
+});
+
+test('parallel requests cannot slip past the rate limit', async () => {
+  await makeUser('burst@example.com');
+  const results = await Promise.all(Array.from({ length: 25 }, () => call('/api/login', { body: { email: 'burst@example.com', password: 'wrong-password-here' } })));
+  assert.equal(results.filter((r) => r.status === 401).length, 10);
+  assert.equal(results.filter((r) => r.status === 429).length, 15);
 });
 
 test('login is rate limited per IP across different accounts', async () => {
@@ -482,7 +516,7 @@ test('deleting an account removes every row and needs the password', async () =>
 test('purge removes expired data and stale unverified accounts', async () => {
   await call('/api/signup', { body: signupBody('stale@example.com') });
   await makeUser('kept@example.com');
-  db.purge(clock.now + 8 * 864e5);
+  await db.app.purge(clock.now + 8 * 864e5);
   assert.deepEqual(db.all('SELECT email FROM users').map((u) => u.email), ['kept@example.com']);
   assert.equal(db.get('SELECT COUNT(*) n FROM attempts').n, 0);
   assert.equal(db.get('SELECT COUNT(*) n FROM tokens').n, 0);
@@ -529,8 +563,10 @@ test('static files cannot escape public/', async () => {
 
 test('legal pages exist, contain operator details and escape them', async () => {
   const cfg = loadConfig({ OPERATOR_NAME: 'Fish <b>Co</b>', OPERATOR_ADDRESS: '1 Lake Rd', OPERATOR_EMAIL: 'hi@fish.example', GOVERNING_LAW: 'the laws of Atlantis', DATA_LOCATION: 'Testland' });
-  const app = http.createServer(createApp({ config: cfg, db: openDb(), mail: async () => {} }));
+  const tempDb = await openTestDb();
+  const app = http.createServer(createApp({ config: cfg, db: tempDb.app, mail: async () => {} }));
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  app.unref(); // A failed assertion must not leave the test run hanging.
   const at = `http://127.0.0.1:${app.address().port}`;
   for (const page of ['privacy', 'terms', 'refunds', 'cookies']) {
     const html = await (await fetch(`${at}/legal/${page}.html`)).text();
@@ -540,13 +576,15 @@ test('legal pages exist, contain operator details and escape them', async () => 
   }
   assert.ok((await (await fetch(`${at}/legal/terms.html`)).text()).includes('Atlantis'));
   const privacy = await (await fetch(`${at}/legal/privacy.html`)).text();
-  assert.ok(privacy.includes('stored in Testland') && privacy.includes('Privacy Commissioner of Canada'));
+  assert.ok(privacy.includes('run in Testland') && privacy.includes('Privacy Commissioner of Canada'));
+  for (const provider of ['Vercel', 'Turso', 'Brevo']) assert.ok(privacy.includes(provider), provider);
   assert.ok(!/legal basis|data controller|legitimate interest|contractual clauses/i.test(privacy), 'no GDPR-only framing');
   assert.equal([...privacy.matchAll(/<tr><td>/g)].length, 7);
   assert.equal([...privacy.matchAll(/<td>/g)].length, 21, 'every row keeps its three columns');
   const index = await (await fetch(at)).text();
   assert.ok(index.includes('1 Lake Rd') && !index.includes('{{'));
   app.close();
+  tempDb.close();
 });
 
 // --- Shared logic ---
