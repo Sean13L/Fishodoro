@@ -60,6 +60,16 @@ export const THEMES = [
   T('arcade', '4-Color Arcade', 'Retro palettes', 'arcade', 'day', ['#1f8ef1', '#3aa4f5', '#62bbf8', '#92d3fb'], ['#27b6d6', '#1798bd', '#0e7ba3'], { kind: 'sun', x: 200, y: 22, color: '#ffffff' }, ['clouds'], { ramp: ['#000000', '#ff55ff', '#55ffff', '#ffffff'] }),
   T('sepia', 'Sepia', 'Retro palettes', 'sepia', 'day', ['#4aa8e8', '#6dbdf0', '#93d2f5', '#bde5f8'], ['#3fa0d0', '#2d86bd', '#206ca3'], { kind: 'sun', x: 200, y: 22, color: '#fff06a' }, ['clouds', 'birds'], { ramp: ['#2e1f0e', '#5f4526', '#8f7248', '#b89d70', '#d9c49c', '#f4e7cf'] }),
   T('vaporwave', 'Neon Vaporwave', 'Retro palettes', 'vapor', 'night', ['#1a0b3a', '#4b1a7a', '#c0267e', '#ff71ce'], ['#b967ff', '#7a35c2', '#01cdfe'], { kind: 'sun', x: 120, y: 46, color: '#fffb96', stripes: true }, ['stars'], { hill: ['#2e1270', '#220c58'], land: ['#05ffa1', '#3a1a80'], wood: ['#b967ff', '#7a35c2'] }),
+
+  T('newyork', 'New York', 'Cities', 'dusk', 'dusk', ['#2b2a66', '#7a3b7d', '#e4694e', '#ffc35c'], ['#b9604f', '#6f3a5e', '#3a2a55'], { kind: 'sun', x: 88, y: 56, color: '#ffd86b' }, ['clouds', 'birds'], { city: 'newyork', hill: ['#241a3f', '#54305e'], glow: '#ffd27a' }),
+  T('chicago', 'Chicago', 'Cities', 'night', 'night', ['#101d4d', '#21367a', '#4a5aa8', '#9a86c2'], ['#3c5aa0', '#263d7a', '#162658'], { kind: 'moon', x: 216, y: 18, color: '#f4f1c9' }, ['stars'], { city: 'chicago', hill: ['#0e1530', '#2a3563'], glow: '#ffe9a8' }),
+  T('toronto', 'Toronto', 'Cities', 'day', 'day', ['#2f7fd6', '#55a2e6', '#8fc6f0', '#d8eef8'], ['#3f93c4', '#2c78a8', '#1f5f8c'], { kind: 'sun', x: 206, y: 18, color: '#fff06a' }, ['clouds', 'birds'], { city: 'toronto', hill: ['#2c4660', '#7d99b0'], glow: '#e8f4ff' }),
+  T('tokyo', 'Tokyo', 'Cities', 'vapor', 'night', ['#0b0726', '#1c0f4d', '#4a1a7a', '#a02a8c'], ['#5a1f7a', '#2f1259', '#140a33'], { kind: 'moon', x: 216, y: 18, color: '#ffe9f5' }, ['stars'], { city: 'tokyo', hill: ['#0c0820', '#2c1a5c'], glow: '#ff9de2' }),
+  T('london', 'London', 'Cities', 'rain', 'day', ['#6d7885', '#87919c', '#a3abb3', '#c0c5c9'], ['#6a7a86', '#56656f', '#44525b'], null, ['clouds', 'rain'], { city: 'london', hill: ['#3a434e', '#6d7885'], glow: '#ffd98a', cloud: '#59636f' }),
+  T('paris', 'Paris', 'Cities', 'blossom', 'dusk', ['#5a79c4', '#b18fc7', '#f4b8a8', '#ffe2b0'], ['#c9a3b0', '#8f86ad', '#5f6a96'], { kind: 'sun', x: 40, y: 54, color: '#fff0c2' }, ['clouds', 'birds'], { city: 'paris', hill: ['#4a3f5e', '#9c82a5'], glow: '#ffe9b0' }),
+  T('sanfrancisco', 'San Francisco', 'Cities', 'autumn', 'dusk', ['#3f5f9c', '#a884b0', '#f0a080', '#f7cf9a'], ['#e09080', '#7f6a8c', '#3f4a70'], { kind: 'sun', x: 210, y: 52, color: '#ffe08a' }, ['clouds'], { city: 'sanfrancisco', hill: ['#2c2f4f', '#7f6f8f'], glow: '#ffd98a' }),
+  T('dubai', 'Dubai', 'Cities', 'dusk', 'night', ['#1f2a5c', '#6a4a8c', '#e08a5c', '#f7c978'], ['#d98a5f', '#6a6a8c', '#2f3f6c'], { kind: 'sun', x: 60, y: 58, color: '#ffd26b' }, ['stars'], { city: 'dubai', hill: ['#1c1a33', '#b07f6a'], glow: '#ffdf9e' }),
+  T('sydney', 'Sydney', 'Cities', 'tropical', 'day', ['#1f8ee0', '#4aa8ea', '#86cbf2', '#c6ecf8'], ['#1fa3c9', '#1585ad', '#0e6a90'], { kind: 'sun', x: 30, y: 18, color: '#fff23b', rays: true }, ['clouds', 'birds'], { city: 'sydney', hill: ['#2f5f7a', '#8fb7c8'], glow: '#fff6c9' }),
 ];
 
 export const ADAPTIVE = 'adaptive';

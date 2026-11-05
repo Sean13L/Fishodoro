@@ -1,3 +1,4 @@
+import { drawCity } from './cities.js';
 import { drawAngler, drawFish, FISH_H, FISH_W, pixelLine, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
 import { resolveSky } from './themes.js';
 import { sfx } from './sfx.js';
@@ -130,7 +131,16 @@ function paintBackground(g, th, scene) {
     rect(g, 187, horizon - 34, 6, 2, '#ffd24d');
   }
   paintCelestial(g, th);
-  if (scene.hills) {
+  const depth = H - horizon;
+  th.water.forEach((color, i) => rect(g, 0, horizon + (i * depth) / th.water.length, W, Math.ceil(depth / th.water.length), color));
+}
+
+// In front of stars and clouds, so a star never shines through a hill or a building. Returns blinking tower lights.
+function paintScenery(g, th, scene) {
+  const { horizon } = scene;
+  g.clearRect(0, 0, W, H);
+  const beacons = th.city ? drawCity(g, th, horizon) : [];
+  if (scene.hills && !th.city) {
     for (let x = 0; x < W; x++) {
       const far = 13 + Math.sin(x * 0.03) * 7 + Math.sin(x * 0.07 + 1) * 3;
       const near = 6 + Math.sin(x * 0.05 + 2) * 4;
@@ -138,9 +148,8 @@ function paintBackground(g, th, scene) {
       rect(g, x, horizon - near, 1, near, th.hill[0]);
     }
   }
-  const depth = H - horizon;
-  th.water.forEach((color, i) => rect(g, 0, horizon + (i * depth) / th.water.length, W, Math.ceil(depth / th.water.length), color));
   scene.still?.(g, th, horizon);
+  return beacons;
 }
 
 function drawClouds(c, th, t, horizon) {
@@ -153,6 +162,9 @@ function drawClouds(c, th, t, horizon) {
     rect(c, x + 9, y - 2, 8, 2, th.cloud);
   }
 }
+
+// Weather falls in front of the scenery. Everything else stays behind it, up in the sky.
+const WEATHER = new Set(['rain', 'snow', 'petals', 'leaves', 'embers', 'fireflies', 'fog', 'lightning']);
 
 const FX = {
   clouds: drawClouds,
@@ -275,6 +287,9 @@ export function createWorld(canvas) {
   const c = canvas.getContext('2d', { willReadFrequently: true });
   const bg = canvasBuffer(W, H);
   const bgc = bg.getContext('2d');
+  const scenery = canvasBuffer(W, H);
+  const sceneryC = scenery.getContext('2d');
+  let beacons = [];
   c.imageSmoothingEnabled = false;
   let angler = 'cat', scene = SCENES.dock, sceneId = 'dock', skyId = 'adaptive', theme = null;
   let state = 'idle', since = 0, fish = null, playedSplash = true;
@@ -282,6 +297,7 @@ export function createWorld(canvas) {
   function repaint() {
     theme = resolveSky(skyId);
     paintBackground(bgc, theme, scene);
+    beacons = paintScenery(sceneryC, theme, scene);
   }
 
   function drawWater(t, th) {
@@ -291,6 +307,12 @@ export function createWorld(canvas) {
       const from = scene.waterFrom ?? 0;
       const x = from + (rand(i) * (W - from) + Math.sin(t * 0.6 + i) * 7 + W) % (W - from);
       rect(c, x, y, 3 + rand(i, 2) * 8, 1, th.water[0]);
+    }
+    if (th.city) {
+      for (let i = 0; i < 26; i++) {
+        const shimmer = still() ? 0 : Math.round(Math.sin(t * 1.6 + i) * 1.5);
+        rect(c, rand(i, 7) * W + shimmer, horizon + 1 + rand(i, 8) * 20, 2 + rand(i, 9) * 3, 1, th.glow);
+      }
     }
     if (th.cele) {
       const cx = th.cele.x;
@@ -406,7 +428,10 @@ export function createWorld(canvas) {
     const th = theme;
     const { horizon } = scene;
     drawWater(t, th);
-    for (const name of th.fx) FX[name]?.(c, th, t, horizon);
+    for (const name of th.fx) if (!WEATHER.has(name)) FX[name]?.(c, th, t, horizon);
+    c.drawImage(scenery, 0, 0);
+    if (still() || Math.sin(t * 2.5) > 0) for (const [x, y] of beacons) rect(c, x, y - 1, 1, 1, '#ff3b30');
+    for (const name of th.fx) if (WEATHER.has(name)) FX[name]?.(c, th, t, horizon);
 
     const seat = scene.seat(t);
     scene.front?.(c, th, t, seat, state);

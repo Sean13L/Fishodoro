@@ -32,6 +32,24 @@ test('all requested skies exist, with unique ids', () => {
   for (const id of ['dawn', 'day', 'sunset', 'night', 'sunny', 'black', 'purple', 'cosmic', 'rain', 'storm', 'snow', 'fog', 'rainbow', 'blossom', 'autumn', 'winter', 'tropical', 'aurora', 'bloodmoon', 'volcano', 'twinmoons', 'meteor', 'handheld', 'arcade', 'sepia', 'vaporwave']) assert.ok(SKY_IDS.includes(id), id);
 });
 
+test('every city skyline draws inside the scene, with tower lights in the sky', async () => {
+  const cities = THEMES.filter((t) => t.pack === 'Cities');
+  assert.deepEqual(cities.map((t) => t.id), ['newyork', 'chicago', 'toronto', 'tokyo', 'london', 'paris', 'sanfrancisco', 'dubai', 'sydney']);
+  const { drawCity } = await import('../public/cities.js');
+  for (const theme of cities) {
+    assert.equal(theme.city, theme.id);
+    assert.ok(theme.glow && theme.hill.length === 2, theme.id);
+    let painted = 0;
+    const canvas = { set fillStyle(color) { assert.match(String(color), /^#[0-9a-f]{6}$/i, theme.id); }, fillRect(x, y, w, h) { assert.ok(Number.isFinite(x + y + w + h), `${theme.id} drew a bad rectangle`); if (w > 0 && h > 0) painted++; } };
+    for (const horizon of [72, 76, 78, 108]) {
+      const beacons = drawCity(canvas, theme, horizon);
+      assert.ok(beacons.length > 0, `${theme.id} has at least one tower light`);
+      for (const [x, y] of beacons) assert.ok(x >= 0 && x < 240 && y >= 0 && y < horizon, `${theme.id} light at ${x},${y}`);
+    }
+    assert.ok(painted > 100, theme.id);
+  }
+});
+
 test('adaptive follows the local hour through the whole day', () => {
   assert.deepEqual([0, 4, 5, 7, 8, 16, 17, 19, 20, 23].map(adaptiveId), ['night', 'night', 'dawn', 'dawn', 'day', 'day', 'sunset', 'sunset', 'night', 'night']);
   assert.equal(resolveSky(ADAPTIVE, 12).id, 'day');
