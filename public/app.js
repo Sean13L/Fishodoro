@@ -1,6 +1,6 @@
 import { api, createAccount } from './account.js';
 import { fishName, fishWeight, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPECIES } from './fish.js';
-import { ANGLERS, cleanPrefs, LAYOUTS, SCENES } from './options.js';
+import { ANGLERS, cleanPrefs, FOCUS_MINUTES, isFocusLength, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
 import { drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
 import { ADAPTIVE, PACKS, THEMES } from './themes.js';
@@ -9,7 +9,8 @@ import { createWorld } from './world.js';
 const $ = (s) => document.querySelector(s);
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
 const announce = (text) => { $('#live').textContent = text; };
-const notice = (text) => { $('#notice').textContent = text; };
+// Opens the panel too, so a message is never hidden inside a collapsed one.
+const notice = (text) => { $('#notice').textContent = text; if (text) $('#controls-panel').open = true; };
 
 // --- Storage: only what the visitor allowed. Everything is wrapped because storage can be blocked. ---
 const CONSENT = 'fish.consent', PREFS = 'fish.prefs', GUEST_FISH = 'fish.guest', TIMER = 'fish.timer';
@@ -47,9 +48,16 @@ function applyPrefs() {
   $('#volume').value = prefs.volume;
   $('#volume').disabled = prefs.muted;
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.checked = Number(r.value) === prefs.focus; });
+  $('#focus-custom').value = FOCUS_MINUTES.includes(prefs.focus) ? '' : prefs.focus;
   $('#pick-sky').value = prefs.sky;
   for (const key of ['angler', 'scene', 'layout']) document.querySelectorAll(`input[name=${key}]`).forEach((r) => { r.checked = r.value === prefs[key]; });
   describeWorld();
+}
+
+// Only on load and sign-in: panel clicks update prefs themselves, so other settings must not reset them.
+function syncPanels() {
+  $('#controls-panel').open = prefs.controlsOpen;
+  $('#footer-panel').open = prefs.footerOpen;
 }
 
 let saveTimer;
@@ -116,6 +124,7 @@ function render() {
   stop.textContent = mode === 'break' || mode === 'breakPaused' ? 'Skip break' : 'Give up';
   $('#round').textContent = `Round ${S.round} of 4${minuteMs < 60000 ? ' (fast test timer)' : ''}`;
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.disabled = mode !== 'idle'; });
+  $('#focus-custom').disabled = mode !== 'idle';
   document.title = mode === 'idle' ? 'Fishodoro' : `${text} ${LABELS[mode][0]} · Fishodoro`;
 }
 
@@ -440,6 +449,15 @@ for (const pack of PACKS) {
 skySelect.addEventListener('change', () => setPrefs({ sky: skySelect.value }));
 
 document.querySelectorAll('input[name=focus]').forEach((r) => r.addEventListener('change', () => setPrefs({ focus: Number(r.value) })));
+$('#focus-custom').addEventListener('change', (e) => {
+  const minutes = Number(e.target.value);
+  if (e.target.value !== '' && isFocusLength(minutes)) { setPrefs({ focus: minutes }); return; }
+  if (e.target.value !== '') notice(`Use whole minutes from ${MIN_FOCUS} to ${MAX_FOCUS}.`);
+  applyPrefs();
+});
+for (const [id, key] of [['#controls-panel', 'controlsOpen'], ['#footer-panel', 'footerOpen']]) {
+  $(id).addEventListener('toggle', (e) => { if (prefs[key] !== e.target.open) setPrefs({ [key]: e.target.open }); });
+}
 $('#sound-on').addEventListener('change', (e) => { unlockAudio(); setPrefs({ muted: !e.target.checked }); });
 $('#volume').addEventListener('change', (e) => { unlockAudio(); setPrefs({ volume: Number(e.target.value) }); sfx.breakEnd(); });
 addEventListener('pointerdown', unlockAudio, { once: true });
@@ -480,6 +498,7 @@ const account = createAccount({
     if (user) {
       prefs = user.prefs;
       applyPrefs();
+      syncPanels();
     }
     S.round = 1;
     await resume();
@@ -488,13 +507,14 @@ const account = createAccount({
 
 // --- Start ---
 applyPrefs();
+syncPanels();
 render();
 (async function boot() {
   try {
     const { user, minuteMs: serverMinute } = await api('/api/me');
     minuteMs = serverMinute;
     account.setUser(user);
-    if (user) { prefs = user.prefs; applyPrefs(); }
+    if (user) { prefs = user.prefs; applyPrefs(); syncPanels(); }
   } catch {
     account.setUser(null);
     announce("Can't reach the server, so you're fishing as a guest for now.");

@@ -59,8 +59,8 @@ await step('essential-only stores no preferences', async () => {
 await step('allowing preferences then saves them', async () => {
   await g.click('#cookie-settings');
   await g.click('#cookies-allow');
-  await g.check('input[name=focus][value="25"]', { force: true });
-  assert.ok((await g.evaluate(() => localStorage.getItem('fish.prefs'))).includes('"focus":25'));
+  await g.check('input[name=focus][value="30"]', { force: true });
+  assert.ok((await g.evaluate(() => localStorage.getItem('fish.prefs'))).includes('"focus":30'));
 });
 await step('guest timer drives a full catch, using a sped-up clock', async () => {
   await g.clock.install();
@@ -70,7 +70,7 @@ await step('guest timer drives a full catch, using a sped-up clock', async () =>
   assert.equal(await text(g, '#go'), 'Pause');
   await g.waitForTimeout(1300);
   await g.screenshot({ path: `${out}/10-casting.png` });
-  await g.clock.fastForward(25 * 60 * 1000 + 1000);
+  await g.clock.fastForward(30 * 60 * 1000 + 1000);
   await g.waitForSelector('#reveal[open]', { timeout: 8000 });
   await g.waitForTimeout(500);
   await g.screenshot({ path: `${out}/11-reveal.png` });
@@ -405,7 +405,7 @@ await step('reduced motion: scene is static, and a catch still completes', async
   await page.clock.resume();
   await page.click('#go');
   await page.waitForTimeout(150);
-  await page.clock.fastForward(25 * 60 * 1000 + 1000);
+  await page.clock.fastForward(30 * 60 * 1000 + 1000);
   await page.waitForSelector('#reveal[open]', { timeout: 8000 });
   await ctx.close();
 });
@@ -437,6 +437,59 @@ await step('fast test timer: a guest catch completes in real time when the serve
   await page.waitForFunction(() => /fast test timer/.test(document.querySelector('#round').textContent));
   await page.click('#go');
   await page.waitForSelector('#reveal[open]', { timeout: 10000 });
+  await ctx.close();
+});
+await step('custom focus minutes: valid values apply and are remembered, bad ones are refused', async () => {
+  const { ctx, page } = await open();
+  await page.click('#cookies-allow');
+  assert.equal(await text(page, '#time'), '30:00', 'the default is 30 minutes');
+  await page.fill('#focus-custom', '37');
+  await page.locator('#focus-custom').blur();
+  assert.equal(await text(page, '#time'), '37:00');
+  assert.equal(await page.locator('input[name=focus]:checked').count(), 0);
+  await page.fill('#focus-custom', '2');
+  await page.locator('#focus-custom').blur();
+  assert.match(await text(page, '#notice'), /5 to 180/);
+  assert.equal(await page.inputValue('#focus-custom'), '37', 'a bad value is undone');
+  await page.reload();
+  await page.waitForTimeout(250);
+  assert.equal(await text(page, '#time'), '37:00', 'remembered after reload');
+  await page.check('input[name=focus][value="45"]', { force: true });
+  assert.equal(await page.inputValue('#focus-custom'), '');
+  await page.click('#go');
+  await page.waitForFunction(() => document.querySelector('#mode').textContent === 'Focus');
+  assert.equal(await page.locator('#focus-custom').isDisabled(), true, 'locked while a session runs');
+  await ctx.close();
+});
+await step('panels collapse by mouse and keyboard, are remembered, and legal links stay reachable', async () => {
+  const { ctx, page } = await open();
+  await page.click('#cookies-allow');
+  for (const layout of ['hero', 'full', 'handheld']) {
+    await page.evaluate((l) => document.querySelector(`input[name=layout][value=${l}]`).click(), layout);
+    const boxes = await page.evaluate(() => ['#controls', 'footer', '#clock'].map((s) => document.querySelector(s).getBoundingClientRect()).map((r) => [r.left, r.top, r.right, r.bottom]));
+    const overlap = ([a, b, c, d], [e, f, g, h]) => a < g && e < c && b < h && f < d;
+    assert.ok(!overlap(boxes[0], boxes[1]) && !overlap(boxes[1], boxes[2]) && !overlap(boxes[0], boxes[2]), `${layout}: open panels and the clock must not overlap`);
+    await page.click('#controls-panel summary');
+    await page.click('#footer-panel summary');
+    assert.equal(await page.locator('#go').isVisible(), false, `${layout}: controls hidden`);
+    assert.equal(await page.locator('a[href="/legal/privacy.html"]').first().isVisible(), false, `${layout}: footer hidden`);
+    await page.waitForTimeout(80);
+    await page.screenshot({ path: `${out}/50-collapsed-${layout}.png` });
+    assert.ok(await page.locator('#footer-panel summary').isVisible(), `${layout}: legal toggle still visible`);
+    assert.ok((await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, `${layout}: no sideways scroll`);
+    await page.locator('#footer-panel summary').focus();
+    await page.keyboard.press('Enter');
+    assert.ok(await page.locator('a[href="/legal/privacy.html"]').first().isVisible(), `${layout}: legal links reopen by keyboard`);
+    await page.click('#controls-panel summary');
+    assert.ok(await page.locator('#go').isVisible(), `${layout}: controls reopen`);
+  }
+  await page.click('#controls-panel summary');
+  await page.waitForTimeout(80);
+  await page.reload();
+  await page.waitForTimeout(250);
+  assert.equal(await page.evaluate(() => document.querySelector('#controls-panel').open), false, 'remembered after reload');
+  await page.evaluate(() => { const i = document.querySelector('#focus-custom'); i.value = '2'; i.dispatchEvent(new Event('change')); });
+  assert.equal(await page.evaluate(() => document.querySelector('#controls-panel').open), true, 'a message reopens the panel');
   await ctx.close();
 });
 await step('every sound effect runs through WebAudio without errors, and respects mute', async () => {

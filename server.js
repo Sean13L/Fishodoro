@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import qrcode from 'qrcode-generator';
 import { RARITIES, rollFish } from './public/fish.js';
-import { cleanPrefs, FOCUS_MINUTES } from './public/options.js';
+import { cleanPrefs, isFocusLength, MAX_FOCUS, MIN_FOCUS } from './public/options.js';
 import { MAX_PASSWORD, passwordProblem } from './public/password.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
@@ -428,7 +428,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
     'GET /api/focus/active': async ({ user }) => ({ active: await activeFocus(user.id) }),
 
     'POST /api/focus/start': async ({ body, user }) => {
-      if (!FOCUS_MINUTES.includes(body.minutes)) fail(400, 'Pick one of the focus lengths.');
+      if (!isFocusLength(body.minutes)) fail(400, `Pick a whole number of minutes from ${MIN_FOCUS} to ${MAX_FOCUS}.`);
       const active = await activeFocus(user.id);
       if (active) return { active };
       await db.run('INSERT INTO focus (user_id, minutes, started_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO NOTHING', user.id, body.minutes, now());

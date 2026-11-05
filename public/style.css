@@ -74,23 +74,29 @@ main { display: grid; gap: 16px; }
 #clock { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 4px 16px 8px; text-align: center; line-height: 1.1; white-space: nowrap; }
 #mode { display: block; font-size: 18px; }
 #time { display: block; font-size: clamp(34px, 7vw, 58px); }
-#controls { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; justify-content: space-between; padding: 12px 14px; margin: 4px; }
+#controls { padding: 4px 14px 8px; margin: 4px; }
+.controls-row { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; justify-content: space-between; padding-top: 4px; }
+summary { cursor: pointer; padding: 8px 0; font-weight: 500; }
 #controls:focus { outline: none; }
 #controls p { margin: 0; }
 #presets { border: 0; padding: 0; margin: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 #presets legend { float: left; margin-right: 8px; padding: 0; }
-#presets label { position: relative; cursor: pointer; }
-#presets input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-#presets span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 3px solid var(--edge); }
-#presets input:checked + span { background: var(--accent); color: var(--accent-ink); }
-#presets input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
-#presets input:disabled + span { opacity: .6; }
-#presets input:disabled { cursor: default; }
+.preset { position: relative; cursor: pointer; }
+.preset input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.preset span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 3px solid var(--edge); }
+.preset input:checked + span { background: var(--accent); color: var(--accent-ink); }
+.preset input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.preset input:disabled + span, #focus-custom:disabled { opacity: .6; }
+.preset input:disabled { cursor: default; }
+.custom { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+#focus-custom { width: 116px; }
+#focus-custom:not(:placeholder-shown) { background: var(--accent); color: var(--accent-ink); }
+#focus-custom::placeholder { color: var(--ink); opacity: .8; }
 .sound { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; cursor: pointer; }
 .check input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
 #volume { width: 120px; height: 44px; accent-color: var(--accent); margin: 0; display: block; }
-footer { margin: 4px; padding: 10px 14px; font-size: 18px; }
+footer { margin: 4px; padding: 4px 14px 8px; font-size: 18px; }
 footer p { margin: 2px 0; overflow-wrap: anywhere; }
 
 /* --- Dialogs --- */
@@ -104,7 +110,7 @@ dialog section { border-top: 3px solid var(--edge); margin-top: 16px; }
 fieldset { border: 3px solid var(--edge); margin: 12px 0; padding: 8px 12px; }
 legend { padding: 0 6px; font-weight: 500; }
 .field { display: grid; gap: 4px; margin: 10px 0; font-weight: 500; }
-input:not([type]), input[type=email], input[type=password], select {
+input:not([type]), input[type=email], input[type=password], input[type=number], select {
   font: inherit; font-weight: 400; color: var(--ink); background: var(--plate);
   min-height: 44px; width: 100%; padding: 6px 10px; border: 3px solid var(--edge); border-radius: 0;
 }
@@ -142,16 +148,17 @@ th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
 
 #cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 5; padding: 12px 14px; max-width: 760px; margin: 0 auto; }
 
-/* --- Layout: full-screen world. Portrait and short screens keep the stacked layout so controls never cover the scene. --- */
-@media (min-aspect-ratio: 1/1) and (min-height: 640px) {
+/* --- Layout: full-screen world. Portrait, short and narrow screens keep the stacked layout so controls never cover the scene. --- */
+@media (min-aspect-ratio: 1/1) and (min-height: 640px) and (min-width: 900px) {
   [data-layout="full"] #app { max-width: none; padding: 0; display: block; }
   [data-layout="full"] #stage { position: fixed; inset: 0; margin: 0; }
   [data-layout="full"] #world { width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; object-position: 32% 60%; }
   [data-layout="full"] .topbar { position: fixed; top: 12px; left: 12px; right: 12px; margin: 0; z-index: 2; }
   [data-layout="full"] #clock { top: 92px; }
   [data-layout="full"] #controls { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); margin: 0; z-index: 2; width: min(860px, calc(100vw - 24px)); }
-  [data-layout="full"] footer { position: fixed; bottom: 124px; right: 12px; margin: 0; z-index: 2; max-width: 320px; padding: 6px 10px; }
-  [data-layout="full"] footer p:first-child, [data-layout="full"] footer p:last-child { display: none; }
+  [data-layout="full"] footer { position: fixed; top: 92px; right: 12px; margin: 0; z-index: 2; max-width: 320px; padding: 6px 10px; }
+  [data-layout="full"] footer p:first-of-type, [data-layout="full"] footer p:last-of-type { display: none; }
+  [data-layout="full"] #controls:has(details:not([open])) { width: auto; }
 }
 
 /* --- Layout: handheld console --- */
@@ -161,14 +168,16 @@ th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
 [data-layout="handheld"] #stage { margin: 0; border: 10px solid var(--edge); border-radius: 8px; }
 [data-layout="handheld"] #time { font-size: clamp(28px, 7vw, 42px); }
 [data-layout="handheld"] #clock { top: 6px; padding: 2px 12px 4px; }
-[data-layout="handheld"] #controls { box-shadow: none; background: var(--plate); margin: 0; justify-content: center; }
+[data-layout="handheld"] #controls { box-shadow: none; background: var(--plate); margin: 0; }
+[data-layout="handheld"] .controls-row { justify-content: center; }
 [data-layout="handheld"] .actions { justify-content: center; }
 [data-layout="handheld"] #go { border-radius: 999px; min-width: 150px; }
 [data-layout="handheld"] #stop { border-radius: 999px; }
 
 @media (max-width: 560px) {
   #app { padding: 8px; }
-  #controls { justify-content: flex-start; }
+  .controls-row { justify-content: flex-start; }
+  .custom { margin-left: 0; }
   #presets legend { float: none; }
   #clock { top: 4px; padding: 2px 10px 4px; }
   .actions .btn { flex: 1 1 auto; }

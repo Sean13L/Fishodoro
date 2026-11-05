@@ -28,41 +28,50 @@
         <canvas id="world" width="240" height="135" role="img" aria-label="A pixel art fishing scene"></canvas>
         <div id="clock" class="plate">
           <span id="mode">Ready to fish</span>
-          <span id="time" role="timer">25:00</span>
+          <span id="time" role="timer">30:00</span>
         </div>
       </div>
 
       <section id="controls" class="plate" aria-label="Timer controls" tabindex="-1">
-        <fieldset id="presets">
-          <legend>Focus minutes</legend>
-          <label><input type="radio" name="focus" value="15"><span>15</span></label>
-          <label><input type="radio" name="focus" value="25"><span>25</span></label>
-          <label><input type="radio" name="focus" value="45"><span>45</span></label>
-          <label><input type="radio" name="focus" value="60"><span>60</span></label>
-        </fieldset>
-        <div class="actions">
-          <button class="btn primary" id="go">Start fishing</button>
-          <button class="btn" id="stop" hidden>Give up</button>
-        </div>
-        <p id="round">Round 1 of 4</p>
-        <p id="notice" role="status"></p>
-        <div class="sound">
-          <label class="check"><input type="checkbox" id="sound-on"> Sound</label>
-          <label class="volume"><span class="sr">Volume</span><input type="range" id="volume" min="0" max="100" step="5"></label>
-        </div>
+        <details id="controls-panel" open>
+          <summary>Controls</summary>
+          <div class="controls-row">
+            <fieldset id="presets">
+              <legend>Focus minutes</legend>
+              <label class="preset"><input type="radio" name="focus" value="15"><span>15</span></label>
+              <label class="preset"><input type="radio" name="focus" value="30"><span>30</span></label>
+              <label class="preset"><input type="radio" name="focus" value="45"><span>45</span></label>
+              <label class="preset"><input type="radio" name="focus" value="60"><span>60</span></label>
+              <label class="custom">Custom <input type="number" id="focus-custom" min="5" max="180" step="1" inputmode="numeric" placeholder="5-180"></label>
+            </fieldset>
+            <div class="actions">
+              <button class="btn primary" id="go">Start fishing</button>
+              <button class="btn" id="stop" hidden>Give up</button>
+            </div>
+            <p id="round">Round 1 of 4</p>
+            <p id="notice" role="status"></p>
+            <div class="sound">
+              <label class="check"><input type="checkbox" id="sound-on"> Sound</label>
+              <label class="volume"><span class="sr">Volume</span><input type="range" id="volume" min="0" max="100" step="5"></label>
+            </div>
+          </div>
+        </details>
       </section>
     </main>
 
     <footer class="plate">
-      <p>{{OPERATOR_NAME}} · {{OPERATOR_ADDRESS}} · <a href="mailto:{{OPERATOR_EMAIL}}">{{OPERATOR_EMAIL}}</a></p>
-      <p>
-        <a href="/legal/privacy.html">Privacy</a> ·
-        <a href="/legal/terms.html">Terms</a> ·
-        <a href="/legal/refunds.html">Refunds</a> ·
-        <a href="/legal/cookies.html">Cookies</a> ·
-        <button class="link" id="cookie-settings">Cookie settings</button>
-      </p>
-      <p>We only send security emails, so there's no mailing list to unsubscribe from.</p>
+      <details id="footer-panel" open>
+        <summary>About and legal</summary>
+        <p>{{OPERATOR_NAME}} · {{OPERATOR_ADDRESS}} · <a href="mailto:{{OPERATOR_EMAIL}}">{{OPERATOR_EMAIL}}</a></p>
+        <p>
+          <a href="/legal/privacy.html">Privacy</a> ·
+          <a href="/legal/terms.html">Terms</a> ·
+          <a href="/legal/refunds.html">Refunds</a> ·
+          <a href="/legal/cookies.html">Cookies</a> ·
+          <button class="link" id="cookie-settings">Cookie settings</button>
+        </p>
+        <p>We only send security emails, so there's no mailing list to unsubscribe from.</p>
+      </details>
     </footer>
   </div>
 

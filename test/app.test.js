@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { RARITIES, rollFish, SIZES } from '../public/fish.js';
-import { DEFAULT_PREFS } from '../public/options.js';
+import { DEFAULT_PREFS, FOCUS_MINUTES } from '../public/options.js';
 import { passwordProblem } from '../public/password.js';
 import { createApp, httpMailer, loadConfig, totpCode } from '../server.js';
 import { openTestDb } from './helpers.js';
@@ -366,7 +366,7 @@ test('logout ends the session on the server', async () => {
 
 test('focus: rejects bad lengths, early claims and double claims', async () => {
   const cookie = await makeUser();
-  for (const minutes of [0, 1, 26, '25', -5, 1e9, null]) assert.equal((await call('/api/focus/start', { body: { minutes }, cookie })).status, 400);
+  for (const minutes of [0, 4, 181, 25.5, '25', -5, 1e9, null]) assert.equal((await call('/api/focus/start', { body: { minutes }, cookie })).status, 400);
   const start = await call('/api/focus/start', { body: { minutes: 25 }, cookie });
   assert.equal(start.data.active.remainingMs, 25 * 60_000);
   const again = await call('/api/focus/start', { body: { minutes: 60 }, cookie });
@@ -442,6 +442,27 @@ test('catches: validates input, resists SQL injection and pages results', async 
   const rest = await call(`/api/catches?before=${page.data.catches.at(-1).id}`, { cookie });
   assert.equal(rest.data.catches.length, 5);
   assert.equal(rest.data.counts.gold, 65);
+});
+
+test('custom focus lengths work from 5 to 180 minutes, and the defaults are 15, 30, 45 and 60', async () => {
+  assert.deepEqual(FOCUS_MINUTES, [15, 30, 45, 60]);
+  assert.equal(DEFAULT_PREFS.focus, 30);
+  const cookie = await makeUser('custom@example.com');
+  for (const minutes of [5, 37, 180]) {
+    const r = await call('/api/focus/start', { body: { minutes }, cookie });
+    assert.equal(r.data.active.minutes, minutes);
+    await call('/api/focus/cancel', { body: {}, cookie });
+  }
+  await call('/api/focus/start', { body: { minutes: 5 }, cookie });
+  clock.now += 5 * 60_000 - 1;
+  assert.equal((await call('/api/focus/complete', { body: {}, cookie })).status, 409);
+  clock.now += 1;
+  assert.equal((await call('/api/focus/complete', { body: {}, cookie })).status, 200);
+  const saved = await call('/api/prefs', { body: { focus: 37, controlsOpen: false, footerOpen: 'no' }, cookie });
+  assert.equal(saved.data.prefs.focus, 37);
+  assert.equal(saved.data.prefs.controlsOpen, false);
+  assert.equal(saved.data.prefs.footerOpen, true, 'a bad value falls back to the default');
+  assert.equal((await call('/api/prefs', { body: { focus: 2 }, cookie })).data.prefs.focus, DEFAULT_PREFS.focus);
 });
 
 test('prefs keep only allowed keys and values', async () => {

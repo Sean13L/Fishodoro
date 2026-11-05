@@ -3,9 +3,12 @@ import { ADAPTIVE, SKY_IDS } from './themes.js';
 export const ANGLERS = [['cat', 'Cat in a bucket hat'], ['kid', 'Kid in overalls'], ['frog', 'Frog in a raincoat'], ['captain', 'Old sea captain']];
 export const SCENES = [['dock', 'Wooden dock on a lake'], ['boat', 'Rowboat on open sea'], ['river', 'Riverbank with campfire'], ['island', 'Tiny floating island']];
 export const LAYOUTS = [['hero', 'Scene with panel below'], ['full', 'Full-screen world'], ['handheld', 'Handheld console']];
-export const FOCUS_MINUTES = [15, 25, 45, 60];
+export const FOCUS_MINUTES = [15, 30, 45, 60];
+export const MIN_FOCUS = 5;
+export const MAX_FOCUS = 180;
+export const isFocusLength = (v) => Number.isInteger(v) && v >= MIN_FOCUS && v <= MAX_FOCUS;
 
-export const DEFAULT_PREFS = { angler: 'cat', scene: 'dock', layout: 'hero', sky: ADAPTIVE, focus: 25, volume: 60, muted: false };
+export const DEFAULT_PREFS = { angler: 'cat', scene: 'dock', layout: 'hero', sky: ADAPTIVE, focus: 30, volume: 60, muted: false, controlsOpen: true, footerOpen: true };
 
 const ids = (list) => list.map(([id]) => id);
 const RULES = {
@@ -13,9 +16,11 @@ const RULES = {
   scene: (v) => ids(SCENES).includes(v),
   layout: (v) => ids(LAYOUTS).includes(v),
   sky: (v) => SKY_IDS.includes(v),
-  focus: (v) => FOCUS_MINUTES.includes(v),
+  focus: isFocusLength,
   volume: (v) => Number.isInteger(v) && v >= 0 && v <= 100,
   muted: (v) => typeof v === 'boolean',
+  controlsOpen: (v) => typeof v === 'boolean',
+  footerOpen: (v) => typeof v === 'boolean',
 };
 
 // Keeps only known keys with allowed values, so stored prefs can never hold arbitrary data.
