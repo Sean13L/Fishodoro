@@ -209,6 +209,7 @@ test('Vercel settings route everything through the app and keep secrets out of u
   const vercel = JSON.parse(fs.readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
   assert.deepEqual(vercel.routes, [{ src: '/(.*)', dest: '/api/index.js' }], 'static files must not bypass the security headers');
   assert.deepEqual(vercel.regions, ['iad1'], 'next to the database');
+  assert.equal(vercel.framework, null, "otherwise Vercel runs server.js directly and the site returns 500");
   assert.equal(vercel.functions['api/index.js'].includeFiles, 'public/**');
   const ignore = fs.readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').split('\n');
   for (const rule of ['.env', '.env.*', 'data/']) assert.ok(ignore.includes(rule), rule);
