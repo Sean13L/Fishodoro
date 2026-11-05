@@ -1,0 +1,9 @@
+/* Legal pages: readable long text with a fixed light palette, plain system text for body copy. */
+html, body { background: #5fb7e5; }
+.legal { max-width: 760px; margin: 24px auto; padding: 20px 24px; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 17px; line-height: 1.55; }
+.legal h1 { font-family: 'Fish Digits', 'Pixelify Sans', ui-monospace, monospace; font-size: 34px; }
+.legal h2 { font-family: 'Fish Digits', 'Pixelify Sans', ui-monospace, monospace; font-size: 24px; margin: 1.3em 0 .3em; }
+.legal table { font-size: 15px; }
+.legal td, .legal th { vertical-align: top; overflow-wrap: anywhere; }
+.legal a { text-underline-offset: 2px; }
+@media (max-width: 560px) { .legal { margin: 8px; padding: 14px; } }

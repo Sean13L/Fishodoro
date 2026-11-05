@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fishodoro</title>
+  <meta name="description" content="A focus timer set in an 8-bit fishing world. Finish a focus session, reel in a fish.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/PixelifySans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body data-layout="hero">
+  <a class="skip btn" href="#controls">Skip to timer controls</a>
+  <div id="app">
+    <header class="plate topbar">
+      <h1>Fishodoro</h1>
+      <nav aria-label="Main">
+        <button class="btn" data-open="tackle">Tackle Box</button>
+        <button class="btn" data-open="customize">Customize</button>
+        <button class="btn" data-open="guide">Guide</button>
+        <button class="btn" id="account-button" data-open="account">Sign in</button>
+      </nav>
+    </header>
+
+    <main>
+      <div id="stage">
+        <canvas id="world" width="240" height="135" role="img" aria-label="A pixel art fishing scene"></canvas>
+        <div id="clock" class="plate">
+          <span id="mode">Ready to fish</span>
+          <span id="time" role="timer">25:00</span>
+        </div>
+      </div>
+
+      <section id="controls" class="plate" aria-label="Timer controls" tabindex="-1">
+        <fieldset id="presets">
+          <legend>Focus minutes</legend>
+          <label><input type="radio" name="focus" value="15"><span>15</span></label>
+          <label><input type="radio" name="focus" value="25"><span>25</span></label>
+          <label><input type="radio" name="focus" value="45"><span>45</span></label>
+          <label><input type="radio" name="focus" value="60"><span>60</span></label>
+        </fieldset>
+        <div class="actions">
+          <button class="btn primary" id="go">Start fishing</button>
+          <button class="btn" id="stop" hidden>Give up</button>
+        </div>
+        <p id="round">Round 1 of 4</p>
+        <p id="notice" role="status"></p>
+        <div class="sound">
+          <label class="check"><input type="checkbox" id="sound-on"> Sound</label>
+          <label class="volume"><span class="sr">Volume</span><input type="range" id="volume" min="0" max="100" step="5"></label>
+        </div>
+      </section>
+    </main>
+
+    <footer class="plate">
+      <p>{{OPERATOR_NAME}} · {{OPERATOR_ADDRESS}} · <a href="mailto:{{OPERATOR_EMAIL}}">{{OPERATOR_EMAIL}}</a></p>
+      <p>
+        <a href="/legal/privacy.html">Privacy</a> ·
+        <a href="/legal/terms.html">Terms</a> ·
+        <a href="/legal/refunds.html">Refunds</a> ·
+        <a href="/legal/cookies.html">Cookies</a> ·
+        <button class="link" id="cookie-settings">Cookie settings</button>
+      </p>
+      <p>We only send security emails, so there's no mailing list to unsubscribe from.</p>
+    </footer>
+  </div>
+
+  <div id="live" class="sr" aria-live="polite"></div>
+
+  <section id="cookie-banner" class="plate" aria-label="Cookie choices" hidden>
+    <p>We use one essential cookie to keep you signed in. If you allow preferences, this device also remembers your look, sound settings and guest fish. No ads, no analytics. <a href="/legal/cookies.html">Cookie policy</a></p>
+    <div class="actions">
+      <button class="btn" id="cookies-allow">Allow preferences</button>
+      <button class="btn" id="cookies-essential">Essential only</button>
+    </div>
+  </section>
+
+  <dialog id="reveal" class="plate" aria-labelledby="reveal-name">
+    <p class="kicker">You caught a fish!</p>
+    <canvas id="reveal-fish" width="120" height="72" role="img"></canvas>
+    <h2 id="reveal-name"></h2>
+    <p><span class="badge" id="reveal-badge"></span> <span id="reveal-weight"></span></p>
+    <p id="reveal-note"></p>
+    <button class="btn primary" data-close>Into the Tackle Box</button>
+  </dialog>
+
+  <dialog id="tackle" class="plate" aria-labelledby="tackle-title">
+    <div class="dialog-head"><h2 id="tackle-title">Tackle Box</h2><button class="btn" data-close>Close</button></div>
+    <p id="tackle-note"></p>
+    <label class="field">Show
+      <select id="tackle-filter"></select>
+    </label>
+    <ul id="tackle-list"></ul>
+    <button class="btn" id="tackle-more" hidden>Show more</button>
+  </dialog>
+
+  <dialog id="customize" class="plate" aria-labelledby="customize-title">
+    <div class="dialog-head"><h2 id="customize-title">Customize</h2><button class="btn" data-close>Close</button></div>
+    <label class="field">Sky
+      <select id="pick-sky"></select>
+    </label>
+    <fieldset id="pick-angler"><legend>Angler</legend></fieldset>
+    <fieldset id="pick-scene"><legend>Scene</legend></fieldset>
+    <fieldset id="pick-layout"><legend>Layout</legend></fieldset>
+    <p id="customize-note"></p>
+  </dialog>
+
+  <dialog id="guide" class="plate" aria-labelledby="guide-title">
+    <div class="dialog-head"><h2 id="guide-title">Fishing Guide</h2><button class="btn" data-close>Close</button></div>
+    <p>Finish a focus session and you reel in one fish. Giving up means no fish. Every session has the same odds.</p>
+    <h3>Rarity</h3>
+    <table><thead><tr><th scope="col">Rarity</th><th scope="col">Chance</th></tr></thead><tbody id="odds-rarity"></tbody></table>
+    <h3>Size</h3>
+    <table><thead><tr><th scope="col">Size</th><th scope="col">Chance</th><th scope="col">Weight</th></tr></thead><tbody id="odds-size"></tbody></table>
+    <h3>Species</h3>
+    <p id="odds-species"></p>
+    <p>Rarity, size and species are rolled separately. The Adaptive sky follows your device's clock, which stays on your device.</p>
+  </dialog>
+
+  <dialog id="account" class="plate" aria-labelledby="account-title">
+    <div class="dialog-head"><h2 id="account-title">Account</h2><button class="btn" data-close>Close</button></div>
+    <p id="account-msg" class="msg" role="status"></p>
+
+    <div id="view-guest">
+      <p id="guest-warning" hidden>Signing in or out ends the session you have running.</p>
+      <form id="form-login" novalidate>
+        <h3>Sign in</h3>
+        <label class="field">Email <input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+        <label class="field">Password <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+        <label class="field" id="login-code" hidden>Authenticator or recovery code <input name="code" autocomplete="one-time-code" maxlength="24"></label>
+        <div class="actions"><button class="btn primary">Sign in</button><button type="button" class="link" id="show-forgot">Forgot password?</button></div>
+      </form>
+
+      <form id="form-verify" novalidate hidden>
+        <h3>Confirm your email</h3>
+        <p>Enter the password you chose at signup. If you didn't sign up for Fishodoro, close this and ignore the email.</p>
+        <label class="field">Password <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+        <button class="btn primary">Confirm email</button>
+      </form>
+
+      <form id="form-forgot" novalidate hidden>
+        <h3>Reset your password</h3>
+        <label class="field">Email <input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+        <button class="btn primary">Send reset link</button>
+      </form>
+
+      <form id="form-reset" novalidate hidden>
+        <h3>Choose a new password</h3>
+        <label class="field">New password <input name="password" type="password" autocomplete="new-password" required maxlength="128" aria-describedby="reset-hint"></label>
+        <p id="reset-hint" class="hint"></p>
+        <button class="btn primary">Save password</button>
+      </form>
+
+      <form id="form-signup" novalidate>
+        <h3>Create an account</h3>
+        <p>Fish you caught as a guest stay on this device and can't be moved to an account.</p>
+        <label class="field">Email <input name="email" type="email" autocomplete="username" required maxlength="254"></label>
+        <label class="field">Password <input name="password" type="password" autocomplete="new-password" required maxlength="128" aria-describedby="signup-hint"></label>
+        <p id="signup-hint" class="hint"></p>
+        <fieldset class="birth">
+          <legend>Your birth month and year</legend>
+          <label class="field">Month <select name="birthMonth" required></select></label>
+          <label class="field">Year <select name="birthYear" required></select></label>
+          <p class="hint">Used once to check your age, then discarded.</p>
+        </fieldset>
+        <label class="check"><input name="consent" type="checkbox" required> <span>I agree to the <a href="/legal/terms.html" target="_blank" rel="noopener">Terms</a> and <a href="/legal/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+        <button class="btn primary">Create account</button>
+      </form>
+      <p id="signup-blocked" hidden>You need to be 16 or older to create an account. You can keep fishing as a guest.</p>
+    </div>
+
+    <div id="view-user" hidden>
+      <p>Signed in as <strong id="user-email"></strong></p>
+      <div class="actions">
+        <button class="btn" id="logout">Sign out</button>
+        <a class="btn" href="/api/export" download="fishodoro-data.json">Download my data</a>
+      </div>
+
+      <section>
+        <h3>Two-factor authentication</h3>
+        <p id="tfa-status"></p>
+        <form id="form-tfa-setup" novalidate>
+          <label class="field">Confirm your password <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <button class="btn">Turn on 2FA</button>
+        </form>
+        <div id="tfa-enroll" hidden>
+          <p>Scan this with an authenticator app, or enter the key by hand.</p>
+          <img id="tfa-qr" alt="QR code for adding Fishodoro to an authenticator app. The same key is written below.">
+          <p><code id="tfa-key"></code></p>
+          <form id="form-tfa-enable" novalidate>
+            <label class="field">6-digit code <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="6"></label>
+            <button class="btn primary">Confirm</button>
+          </form>
+        </div>
+        <div id="tfa-codes" hidden>
+          <p><strong>Save these recovery codes now.</strong> Each works once if you lose your authenticator, and they won't be shown again.</p>
+          <ul id="tfa-code-list"></ul>
+        </div>
+        <form id="form-tfa-disable" novalidate hidden>
+          <label class="field">Password <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <label class="field">2FA or recovery code <input name="code" autocomplete="one-time-code" required maxlength="24"></label>
+          <button class="btn">Turn off 2FA</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Change password</h3>
+        <form id="form-password" novalidate>
+          <label class="field">Current password <input name="current" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <label class="field">New password <input name="next" type="password" autocomplete="new-password" required maxlength="128"></label>
+          <label class="field tfa-only" hidden>2FA or recovery code <input name="code" autocomplete="one-time-code" maxlength="24"></label>
+          <button class="btn">Change password</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Delete account</h3>
+        <p>This permanently deletes your account, your fish and your settings. It can't be undone. You can download your data first.</p>
+        <form id="form-delete" novalidate>
+          <label class="field">Password <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <label class="field tfa-only" hidden>2FA or recovery code <input name="code" autocomplete="one-time-code" maxlength="24"></label>
+          <button class="btn">Delete my account</button>
+        </form>
+      </section>
+    </div>
+  </dialog>
+</body>
+</html>

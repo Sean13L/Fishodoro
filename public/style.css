@@ -1,0 +1,186 @@
+@font-face {
+  font-family: 'Pixelify Sans';
+  src: url('/fonts/PixelifySans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-display: swap;
+}
+/* Pixelify Sans's 5 reads as an S, which a timer can't afford, so digits come from Silkscreen. */
+@font-face {
+  font-family: 'Fish Digits';
+  src: url('/fonts/Silkscreen.woff2') format('woff2');
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+30-39, U+3A;
+}
+
+:root {
+  --page: #5fb7e5; --plate: #fff4d6; --ink: #2b1d0e; --accent: #b93c08; --accent-ink: #fff; --edge: #2b1d0e; --focus: #0b4fd6;
+  --pixel: 4px;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--ink);
+  font: 400 20px/1.4 'Fish Digits', 'Pixelify Sans', ui-monospace, Menlo, Consolas, monospace;
+  font-variant-ligatures: none;
+  font-synthesis: none;
+}
+h1, h2, h3 { line-height: 1.15; margin: 0; font-weight: 500; }
+h1 { font-size: 28px; }
+h2 { font-size: 26px; }
+h3 { font-size: 21px; margin: 1em 0 .4em; }
+p { margin: .5em 0; }
+a { color: inherit; }
+[hidden] { display: none !important; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: 8px; top: -80px; z-index: 10; }
+.skip:focus { top: 8px; }
+
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Chunky pixel corners made from four offset shadows. */
+.plate {
+  background: var(--plate);
+  color: var(--ink);
+  box-shadow: 0 calc(var(--pixel) * -1) 0 var(--edge), 0 var(--pixel) 0 var(--edge), calc(var(--pixel) * -1) 0 0 var(--edge), var(--pixel) 0 0 var(--edge);
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 6px 14px;
+  font: inherit; font-weight: 500; text-decoration: none; cursor: pointer;
+  color: var(--ink); background: var(--plate);
+  border: 3px solid var(--edge);
+  box-shadow: inset -3px -3px 0 color-mix(in srgb, var(--edge) 25%, transparent);
+}
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.btn:disabled { cursor: default; opacity: .75; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.link { font: inherit; color: inherit; background: none; border: 0; padding: 0; min-height: 24px; text-decoration: underline; cursor: pointer; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* --- Page structure, shared by every layout --- */
+#app { max-width: 980px; margin: 0 auto; padding: 14px; display: grid; gap: 16px; }
+main { display: grid; gap: 16px; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin: 4px; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 8px; }
+#stage { position: relative; margin: 4px; line-height: 0; background: var(--edge); }
+#world { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; image-rendering: pixelated; }
+#clock { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 4px 16px 8px; text-align: center; line-height: 1.1; white-space: nowrap; }
+#mode { display: block; font-size: 18px; }
+#time { display: block; font-size: clamp(34px, 7vw, 58px); }
+#controls { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; justify-content: space-between; padding: 12px 14px; margin: 4px; }
+#controls:focus { outline: none; }
+#controls p { margin: 0; }
+#presets { border: 0; padding: 0; margin: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#presets legend { float: left; margin-right: 8px; padding: 0; }
+#presets label { position: relative; cursor: pointer; }
+#presets input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+#presets span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 3px solid var(--edge); }
+#presets input:checked + span { background: var(--accent); color: var(--accent-ink); }
+#presets input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+#presets input:disabled + span { opacity: .6; }
+#presets input:disabled { cursor: default; }
+.sound { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.check { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; cursor: pointer; }
+.check input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
+#volume { width: 120px; height: 44px; accent-color: var(--accent); margin: 0; display: block; }
+footer { margin: 4px; padding: 10px 14px; font-size: 18px; }
+footer p { margin: 2px 0; overflow-wrap: anywhere; }
+
+/* --- Dialogs --- */
+dialog {
+  border: 0; padding: 18px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 40px);
+  overflow: auto; color: var(--ink);
+}
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; top: -18px; background: var(--plate); padding: 4px 0 8px; z-index: 1; }
+dialog section { border-top: 3px solid var(--edge); margin-top: 16px; }
+fieldset { border: 3px solid var(--edge); margin: 12px 0; padding: 8px 12px; }
+legend { padding: 0 6px; font-weight: 500; }
+.field { display: grid; gap: 4px; margin: 10px 0; font-weight: 500; }
+input:not([type]), input[type=email], input[type=password], select {
+  font: inherit; font-weight: 400; color: var(--ink); background: var(--plate);
+  min-height: 44px; width: 100%; padding: 6px 10px; border: 3px solid var(--edge); border-radius: 0;
+}
+fieldset label.choice { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+fieldset label.choice input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
+.birth { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.birth .hint { grid-column: 1 / -1; }
+.hint { font-size: 18px; min-height: 1.4em; margin: 2px 0 8px; }
+.msg:empty { display: none; }
+.msg { border: 3px solid var(--edge); padding: 8px 12px; }
+form + form { margin-top: 18px; padding-top: 2px; border-top: 3px solid var(--edge); }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; font-size: 16px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
+#tfa-qr { display: block; image-rendering: pixelated; background: #fff; padding: 8px; }
+#tfa-code-list { font-family: ui-monospace, Menlo, Consolas, monospace; columns: 2; padding-left: 1.2em; }
+
+.badge { display: inline-block; justify-self: start; padding: 1px 8px; font-size: 18px; border: 2px solid var(--edge); }
+
+#reveal { text-align: center; width: min(420px, calc(100vw - 32px)); }
+#reveal.pop { animation: pop .45s steps(5); }
+#reveal[data-tier="5"]::backdrop { background: rgb(0 0 0 / .8); }
+#reveal[data-tier="6"]::backdrop { background: rgb(14 5 50 / .8); }
+#reveal-fish { width: 360px; max-width: 100%; aspect-ratio: 5 / 3; image-rendering: pixelated; display: block; margin: 6px auto 12px; }
+.kicker { font-weight: 500; margin-top: 0; }
+@keyframes pop { from { transform: scale(.5); } to { transform: scale(1); } }
+
+#tackle-list { list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+#tackle-list li { border: 3px solid var(--edge); padding: 8px; display: grid; gap: 4px; align-content: start; }
+#tackle-list img { image-rendering: pixelated; justify-self: center; width: auto; height: 60px; max-width: 100%; object-fit: contain; }
+#tackle-list strong { line-height: 1.15; font-weight: 500; }
+#tackle-list time, #tackle-list .weight { font-size: 18px; }
+#notice { flex-basis: 100%; }
+#notice:empty { display: none; }
+
+#cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 5; padding: 12px 14px; max-width: 760px; margin: 0 auto; }
+
+/* --- Layout: full-screen world. Portrait and short screens keep the stacked layout so controls never cover the scene. --- */
+@media (min-aspect-ratio: 1/1) and (min-height: 640px) {
+  [data-layout="full"] #app { max-width: none; padding: 0; display: block; }
+  [data-layout="full"] #stage { position: fixed; inset: 0; margin: 0; }
+  [data-layout="full"] #world { width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; object-position: 32% 60%; }
+  [data-layout="full"] .topbar { position: fixed; top: 12px; left: 12px; right: 12px; margin: 0; z-index: 2; }
+  [data-layout="full"] #clock { top: 92px; }
+  [data-layout="full"] #controls { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); margin: 0; z-index: 2; width: min(860px, calc(100vw - 24px)); }
+  [data-layout="full"] footer { position: fixed; bottom: 124px; right: 12px; margin: 0; z-index: 2; max-width: 320px; padding: 6px 10px; }
+  [data-layout="full"] footer p:first-child, [data-layout="full"] footer p:last-child { display: none; }
+}
+
+/* --- Layout: handheld console --- */
+[data-layout="handheld"] { --shell: color-mix(in srgb, var(--plate) 80%, var(--edge)); }
+[data-layout="handheld"] #app { max-width: 620px; }
+[data-layout="handheld"] main { background: var(--shell); padding: 18px 18px 24px; border: var(--pixel) solid var(--edge); border-radius: 18px 18px 56px 18px; gap: 18px; }
+[data-layout="handheld"] #stage { margin: 0; border: 10px solid var(--edge); border-radius: 8px; }
+[data-layout="handheld"] #time { font-size: clamp(28px, 7vw, 42px); }
+[data-layout="handheld"] #clock { top: 6px; padding: 2px 12px 4px; }
+[data-layout="handheld"] #controls { box-shadow: none; background: var(--plate); margin: 0; justify-content: center; }
+[data-layout="handheld"] .actions { justify-content: center; }
+[data-layout="handheld"] #go { border-radius: 999px; min-width: 150px; }
+[data-layout="handheld"] #stop { border-radius: 999px; }
+
+@media (max-width: 560px) {
+  #app { padding: 8px; }
+  #controls { justify-content: flex-start; }
+  #presets legend { float: none; }
+  #clock { top: 4px; padding: 2px 10px 4px; }
+  .actions .btn { flex: 1 1 auto; }
+  #stop { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Customize sits beside the scene, with no dimming, so changes preview live. */
+@media (min-width: 900px) {
+  #customize { width: 400px; margin: auto 16px auto auto; }
+  #customize::backdrop { background: transparent; }
+}
