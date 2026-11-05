@@ -322,9 +322,39 @@ test('changing a password keeps this session and ends the others', async () => {
   const next = 'quiet-harbor-swan-55';
   assert.equal((await call('/api/password', { body: { current: 'wrong', next }, cookie: one })).status, 401);
   assert.equal((await call('/api/password', { body: { current: PASSWORD, next: 'short' }, cookie: one })).status, 400);
-  assert.equal((await call('/api/password', { body: { current: PASSWORD, next }, cookie: one })).status, 200);
-  assert.equal((await call('/api/catches', { cookie: one })).status, 200);
+  const changed = await call('/api/password', { body: { current: PASSWORD, next }, cookie: one });
+  assert.equal(changed.status, 200);
+  const fresh = changed.res.headers.get('set-cookie').split(';')[0];
+  assert.equal((await call('/api/catches', { cookie: fresh })).status, 200);
+  assert.equal((await call('/api/catches', { cookie: one })).status, 401, 'the old token dies, in case it was stolen');
   assert.equal((await call('/api/catches', { cookie: two })).status, 401);
+});
+
+test('a login in flight cannot outlive a password change', async () => {
+  const email = 'inflight@example.com';
+  await makeUser(email);
+  // Changes the password in the gap between the login's credential check and its session insert.
+  const racing = { ...db.app, run: async (sql, ...args) => {
+    if (sql.startsWith('INSERT INTO sessions')) db.run('UPDATE users SET pw_hash = ? WHERE email = ?', 'argon2id$changed', email);
+    return db.app.run(sql, ...args);
+  } };
+  const app = http.createServer(createApp({ config, db: racing, now: () => clock.now, mail: async () => {} }));
+  await new Promise((r) => app.listen(0, '127.0.0.1', r));
+  app.unref();
+  const before = db.get('SELECT COUNT(*) n FROM sessions').n;
+  const res = await fetch(`http://127.0.0.1:${app.address().port}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', origin: config.origin }, body: JSON.stringify({ email, password: PASSWORD }) });
+  assert.equal(res.status, 401);
+  assert.equal(res.headers.get('set-cookie'), null);
+  assert.equal(db.get('SELECT COUNT(*) n FROM sessions').n, before);
+  app.close();
+});
+
+test('a password change discards an unfinished 2FA setup', async () => {
+  const cookie = await makeUser('pending@example.com');
+  await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie });
+  assert.ok(db.get('SELECT totp_secret FROM users').totp_secret);
+  await call('/api/password', { body: { current: PASSWORD, next: 'quiet-harbor-swan-55' }, cookie });
+  assert.equal(db.get('SELECT totp_secret FROM users').totp_secret, null);
 });
 
 test('logout ends the session on the server', async () => {
@@ -437,6 +467,7 @@ test('2FA: setup, replay protection, recovery codes, and disabling', async () =>
   assert.equal((await call('/api/2fa/enable', { body: { code: '000000' }, cookie })).status, 400);
   const enable = await call('/api/2fa/enable', { body: { code: totpCode(secret, counter()) }, cookie });
   assert.equal(enable.status, 200);
+  const afterEnable = enable.res.headers.get('set-cookie').split(';')[0];
   assert.equal(enable.data.recoveryCodes.length, 8);
   assert.ok(!db.all('SELECT hash FROM recovery').some((r) => enable.data.recoveryCodes.includes(r.hash)));
 
@@ -456,8 +487,8 @@ test('2FA: setup, replay protection, recovery codes, and disabling', async () =>
   assert.equal((await call('/api/login', { body: { ...body, code: recovery } })).status, 200);
   assert.equal((await call('/api/login', { body: { ...body, code: recovery } })).status, 401, 'a recovery code must not work twice');
 
-  assert.equal((await call('/api/2fa/disable', { body: { password: PASSWORD }, cookie })).status, 401);
-  assert.equal((await call('/api/2fa/disable', { body: { password: PASSWORD, code: enable.data.recoveryCodes[1] }, cookie })).status, 200);
+  assert.equal((await call('/api/2fa/disable', { body: { password: PASSWORD }, cookie: afterEnable })).status, 401);
+  assert.equal((await call('/api/2fa/disable', { body: { password: PASSWORD, code: enable.data.recoveryCodes[1] }, cookie: afterEnable })).status, 200);
   assert.equal(db.get('SELECT COUNT(*) n FROM recovery').n, 0);
   assert.equal(db.get('SELECT totp_secret FROM users').totp_secret, null);
 });
@@ -473,14 +504,16 @@ test('parallel logins can use one 2FA code only once', async () => {
   assert.equal(results.filter((r) => r.status === 200).length, 1);
 });
 
-test('turning on 2FA signs out other devices and keeps this one', async () => {
+test('turning on 2FA signs out every other device and gives this one a new token', async () => {
   const here = await makeUser('devices@example.com');
   const other = await login('devices@example.com');
   const { data: { key } } = await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie: here });
-  await call('/api/2fa/enable', { body: { code: totpCode(fromBase32(key), Math.floor(clock.now / 30_000)) }, cookie: here });
-  assert.equal((await call('/api/catches', { cookie: here })).status, 200);
+  const enabled = await call('/api/2fa/enable', { body: { code: totpCode(fromBase32(key), Math.floor(clock.now / 30_000)) }, cookie: here });
+  const fresh = enabled.res.headers.get('set-cookie').split(';')[0];
+  assert.equal((await call('/api/catches', { cookie: fresh })).status, 200);
+  assert.equal((await call('/api/catches', { cookie: here })).status, 401, 'the old token dies, in case it was stolen');
   assert.equal((await call('/api/catches', { cookie: other })).status, 401);
-  assert.equal((await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie: here })).status, 409);
+  assert.equal((await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie: fresh })).status, 409);
 });
 
 test('2FA codes are rate limited at login', async () => {

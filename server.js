@@ -17,6 +17,8 @@ const CLAIM_WINDOW_MS = DAY;
 const CONSENT_VERSION = '2026-11-04';
 const MIN_AGE_MONTHS = 16 * 12;
 const MAX_BODY = 16 * 1024;
+// A credential change discards an unfinished 2FA setup, so a leftover session can't complete it.
+const DROP_PENDING_2FA = 'totp_secret = CASE WHEN totp_enabled = 1 THEN totp_secret ELSE NULL END';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -205,9 +207,13 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
   const sendVerify = (user) => send(user.email, 'Confirm your Fishodoro email', async () =>
     `Confirm your email to start saving fish:\n${config.origin}/#verify=${await issueToken(user.id, 'verify')}\n\nThis link expires in 30 minutes. If you didn't sign up, you can ignore this email.`);
 
-  async function startSession(res, userId) {
+  // Only succeeds if the credentials that were checked are still current, so a login
+  // already in flight can't outlive a password change, reset or new 2FA.
+  async function startSession(res, user) {
     const token = newToken();
-    await db.run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', sha256(token), userId, now() + SESSION_MS);
+    const { rowsAffected } = await db.run('INSERT INTO sessions (token_hash, user_id, expires_at) SELECT ?, id, ? FROM users WHERE id = ? AND pw_hash = ? AND totp_enabled = ? AND verified = 1',
+      sha256(token), now() + SESSION_MS, user.id, user.pw_hash, user.totp_enabled);
+    if (!rowsAffected) fail(401, 'Incorrect email or password.');
     res.setHeader('Set-Cookie', `${cookieName}=${token}; ${cookieAttrs}; Max-Age=${SESSION_MS / 1000}`);
   }
   const endSession = (res) => res.setHeader('Set-Cookie', `${cookieName}=; ${cookieAttrs}; Max-Age=0`);
@@ -321,7 +327,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
         if (!(await checkSecondFactor(user, body.code))) fail(401, 'That code did not work.', { need2fa: true });
       }
       await clearAttempts(`login-acct:${email}`);
-      await startSession(res, user.id);
+      await startSession(res, user);
       return { user: publicUser(user) };
     }),
 
@@ -352,23 +358,25 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       const pwHash = await hashPassword(body.password);
       const userId = await useToken(token, 'reset');
       await db.batch([
-        ['UPDATE users SET pw_hash = ?, verified = 1 WHERE id = ?', pwHash, userId],
+        [`UPDATE users SET pw_hash = ?, verified = 1, ${DROP_PENDING_2FA} WHERE id = ?`, pwHash, userId],
         ['DELETE FROM sessions WHERE user_id = ?', userId],
         ['DELETE FROM tokens WHERE user_id = ?', userId],
       ]);
       return { message: 'Password updated. You can sign in now.' };
     }),
 
-    'POST /api/password': async ({ body, user, tokenHash }) => {
+    'POST /api/password': async ({ body, user, res }) => {
       await reauth(user, { ...body, password: body.current });
       const problem = passwordProblem(body.next, user.email);
       if (problem) fail(400, problem);
       const pwHash = await hashPassword(body.next);
-      await db.batch([
-        ['UPDATE users SET pw_hash = ? WHERE id = ?', pwHash, user.id],
-        ['DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', user.id, tokenHash],
+      const [changed] = await db.batch([
+        [`UPDATE users SET pw_hash = ?, ${DROP_PENDING_2FA} WHERE id = ? AND pw_hash = ?`, pwHash, user.id, user.pw_hash],
+        ['DELETE FROM sessions WHERE user_id = ?', user.id],
         ['DELETE FROM tokens WHERE user_id = ?', user.id],
       ]);
+      if (!changed.rowsAffected) fail(401, 'Please sign in.');
+      await startSession(res, { ...user, pw_hash: pwHash }); // A new token, in case the old cookie was stolen.
       return { message: 'Password updated. Your other devices were signed out.' };
     },
 
@@ -386,17 +394,18 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       return { key, qr: qr.createDataURL(4, 8) };
     },
 
-    'POST /api/2fa/enable': async ({ body, user, tokenHash }) => {
+    'POST /api/2fa/enable': async ({ body, user, res }) => {
       if (user.totp_enabled || !user.totp_secret) fail(409, 'Start 2FA setup first.');
       await attempt(`2fa-enable:${user.id}`, 10, 15 * MINUTE);
       if (!/^\d{6}$/.test(String(body.code ?? '').trim()) || !(await checkSecondFactor(user, body.code))) fail(400, 'That code did not work.');
       const codes = Array.from({ length: 8 }, () => crypto.randomBytes(8).toString('hex'));
       await db.batch([
         ['UPDATE users SET totp_enabled = 1 WHERE id = ?', user.id],
-        ['DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', user.id, tokenHash],
+        ['DELETE FROM sessions WHERE user_id = ?', user.id],
         ['DELETE FROM recovery WHERE user_id = ?', user.id],
         ...codes.map((code) => ['INSERT INTO recovery (hash, user_id) VALUES (?, ?)', sha256(code), user.id]),
       ]);
+      await startSession(res, { ...user, totp_enabled: 1 }); // A new token, in case the old cookie was stolen.
       return { recoveryCodes: codes };
     },
 
@@ -439,7 +448,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       const fish = rollFish(crypto.randomInt);
       // One transaction: only the request whose DELETE removed the session gets a fish.
       const [, inserted] = await db.batch([
-        ['DELETE FROM focus WHERE user_id = ?', user.id],
+        ['DELETE FROM focus WHERE user_id = ? AND started_at = ?', user.id, active.startedAt],
         ['INSERT INTO catches (user_id, species, rarity, size, weight, caught_at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1',
           user.id, fish.species, fish.rarity, fish.size, fish.weight, now()],
       ]);
