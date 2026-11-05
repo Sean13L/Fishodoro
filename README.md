@@ -26,13 +26,13 @@ Locally, emails print to the console, so that's where to find verification and r
 
 All three services have free plans that need no credit card when last checked. Going over a limit stops the service rather than billing you.
 
-1. **Turso:** sign up at turso.tech and create a database in `aws-ca-central-1` (Canada). Copy its `libsql://` URL and create an auth token.
+1. **Turso:** run `npx vercel integration add tursocloud --name fishodoro -e production`, accepting the terms in your browser. This adds the database settings to Vercel. Vercel's integration doesn't offer a Canadian region, so the database is in Virginia.
 2. **Brevo:** sign up at brevo.com, create an API key, and verify a sender address.
-3. **Settings:** fill in `.env.production` (template: `.env.example`).
+3. **Settings:** fill in `.env.production` (template: `.env.example`), leaving out the Turso settings.
 4. **Vercel:** run `npx vercel login`, then `npx vercel link`, add each setting with `npx vercel env add NAME production`, and deploy with `npx vercel deploy --prod`.
 5. **Check it:** the page should load with its security headers, and `/server.js` and `/.env.production` should return 404.
 
-`vercel.json` sends every request through the app so the security headers always apply, keeps the app in Montréal (`yul1`), and runs the data purge once a day.
+`vercel.json` sends every request through the app so the security headers always apply, keeps the app in Virginia (`iad1`) next to the database, and runs the data purge once a day.
 
 **Limits to know:**
 - Vercel's free Hobby plan is for non-commercial use, so charging money or running ads means moving to a paid plan.
@@ -42,7 +42,7 @@ All three services have free plans that need no credit card when last checked. G
 
 ## Before launch
 
-- Have a lawyer review `public/legal/*`. They're plain-language drafts, not legal advice. Check the age limit (16) and the 30-day response time. They're written for an operator in Ontario under PIPEDA, so users or marketing in Quebec or the EU need another look.
+- Have a lawyer review `public/legal/*`. They're plain-language drafts, not legal advice. Check the age limit (16) and the 30-day response time. They're written for an operator in Ontario under PIPEDA, with data stored in the United States, so users or marketing in Quebec or the EU need another look.
 - Update `CONSENT_VERSION` in `server.js` and the dates on the legal pages whenever the Terms or Privacy Policy change.
 
 ## Layout
