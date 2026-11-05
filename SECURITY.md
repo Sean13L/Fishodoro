@@ -4,7 +4,7 @@
 
 - **The database has no client access.** It's a Turso database reached only by the server with a secret token, so there are no row-level security policies or rules to misconfigure. Every query uses `user.id` from the session, and all SQL is parameterized.
 - **Routes are private by default.** A route only skips the session check if it's wrapped in `open()`. Unknown routes return 404.
-- **The server decides catches.** It checks elapsed time and rolls the fish, and the request body has no influence on either. Guest fish are local only and can't be imported.
+- **The server decides catches and coins.** It checks elapsed time, rolls the fish, prices sales from the stored fish, and enforces ownership of market items, and the request body has no influence on any of them. Sales and purchases are single transactions, so they can't pay out twice or overspend. Guest fish are local only and can't be imported.
 
 ## Sessions and browser
 

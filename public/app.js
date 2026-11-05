@@ -1,8 +1,9 @@
 import { api, createAccount } from './account.js';
 import { fishName, fishWeight, guaranteedRarity, rarityOdds, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPECIES } from './fish.js';
-import { ANGLERS, cleanPrefs, FOCUS_MINUTES, isFocusLength, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
+import { CATALOG, fishPrice, inSlot, RARITY_VALUE, SIZE_MULTIPLIER } from './market.js';
+import { ANGLERS, cleanPrefs, DEFAULT_PREFS, FOCUS_MINUTES, isFocusLength, keepOwned, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
-import { drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
+import { anglerImage, drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
 import { ADAPTIVE, PACKS, resolveSky, THEMES } from './themes.js';
 import { createWorld } from './world.js';
 
@@ -22,7 +23,7 @@ const local = {
 const readJson = (text, fallback) => { try { return JSON.parse(text) ?? fallback; } catch { return fallback; } };
 const allowsPrefs = () => local.get(CONSENT) === 'prefs';
 
-let prefs = cleanPrefs(allowsPrefs() ? readJson(local.get(PREFS), {}) : {});
+let prefs = keepOwned(cleanPrefs(allowsPrefs() ? readJson(local.get(PREFS), {}) : {}), []);
 // Stored data can be stale or edited, so anything the game can't draw is dropped.
 const validFish = (f) => !!f && RARITIES.some((r) => r.id === f.rarity) && SIZES.some((s) => s.id === f.size) && SPECIES.some((s) => s.id === f.species)
   && Number.isFinite(f.weight) && Number.isFinite(f.caught_at);
@@ -50,6 +51,7 @@ function applyPrefs() {
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.checked = Number(r.value) === prefs.focus; });
   $('#focus-custom').value = FOCUS_MINUTES.includes(prefs.focus) ? '' : prefs.focus;
   $('#pick-sky').value = prefs.sky;
+  for (const slot of ['hat', 'face', 'rod']) $(`#pick-${slot}`).value = prefs[slot];
   for (const key of ['angler', 'scene', 'layout']) document.querySelectorAll(`input[name=${key}]`).forEach((r) => { r.checked = r.value === prefs[key]; });
   describeWorld();
 }
@@ -75,8 +77,9 @@ function setPrefs(change) {
 
 function describeWorld() {
   const name = (list, id) => list.find(([key]) => key === id)[1];
+  const allAnglers = [...ANGLERS, ...inSlot('angler').map((item) => [item.id, item.name])];
   const activity = { idle: 'waiting to cast', cast: 'casting a line', wait: 'watching the bobber', bite: 'feeling a bite', reel: 'reeling in a fish', reveal: 'holding up a fresh catch', break: 'taking a nap' }[world.state()];
-  $('#world').setAttribute('aria-label', `Pixel art: ${name(ANGLERS, prefs.angler)} ${activity}. ${name(SCENES, prefs.scene)}, ${world.theme().name} sky.`);
+  $('#world').setAttribute('aria-label', `Pixel art: ${name(allAnglers, prefs.angler)} ${activity}. ${name(SCENES, prefs.scene)}, ${world.theme().name} sky.`);
 }
 
 // --- Timer. Modes: idle, focus, paused, reeling, stuck (claim failed), break, breakPaused ---
@@ -372,6 +375,7 @@ document.addEventListener('click', (event) => {
     const name = opener.dataset.open;
     if (name === 'tackle') openTackle();
     if (name === 'guide') fillOdds();
+    if (name === 'market') fillMarket();
     if (name === 'account') account.refresh();
     $(`#${name}`).showModal();
   }
@@ -380,6 +384,31 @@ document.addEventListener('click', (event) => {
 
 // --- Tackle Box ---
 let tacklePage = [];
+const owned = () => account.user()?.unlocks ?? [];
+
+function updateUser(change) {
+  account.setUser({ ...account.user(), ...change });
+  showCoins();
+}
+
+function showCoins() {
+  const user = account.user();
+  $('#coins').hidden = !user;
+  if (user) $('#coins').textContent = `${user.coins} coins`;
+  fillCustomize();
+}
+
+async function sell(ids, label) {
+  try {
+    const { sold, earned, coins } = await api('/api/sell', { ids });
+    updateUser({ coins });
+    $('#tackle-coins').textContent = `Sold ${sold === 1 ? label : `${sold} fish`} for ${earned} coins. You have ${coins} coins.`;
+  } catch (err) {
+    $('#tackle-coins').textContent = err.message;
+  }
+  await loadTackle();
+}
+
 function fishCard(fish) {
   const [bg, fg] = rarityOf(fish).badge;
   const badge = el('span', { className: 'badge', textContent: rarityOf(fish).name });
@@ -391,7 +420,20 @@ function fishCard(fish) {
     el('strong', { textContent: fishName(fish) }),
     badge,
     el('span', { className: 'weight', textContent: fishWeight(fish) }),
-    el('time', { dateTime: when.toISOString(), textContent: when.toLocaleDateString() }));
+    el('time', { dateTime: when.toISOString(), textContent: when.toLocaleDateString() }),
+    ...(fish.id ? [sellButton(fish)] : []));
+}
+
+function sellButton(fish) {
+  const price = fishPrice(fish);
+  const button = el('button', { className: 'btn', textContent: `Sell for ${price}` });
+  button.setAttribute('aria-label', `Sell ${fishName(fish)} for ${price} coins`);
+  button.addEventListener('click', () => {
+    // A rare catch deserves a second thought, because a sale can't be undone.
+    if (rarityIndexOf(fish) >= 3 && !confirm(`Sell your ${fishName(fish)} for ${price} coins? This can't be undone.`)) return;
+    sell([fish.id], `your ${fishName(fish)}`);
+  });
+  return button;
 }
 
 function fillFilter(counts) {
@@ -413,9 +455,11 @@ async function loadTackle(more = false) {
     const shown = guestFish.filter((f) => !rarity || f.rarity === rarity);
     list.replaceChildren(...shown.map(fishCard));
     button.hidden = true;
+    $('#tackle-sell-all').hidden = true;
     $('#tackle-note').textContent = allowsPrefs()
       ? 'Guest fish stay on this device and can\'t be moved to an account.'
       : 'Guest fish last until you reload, because preferences aren\'t allowed on this device. They can\'t be moved to an account.';
+    $('#tackle-note').textContent += ' Sign in to sell the fish you catch from then on.';
     if (!shown.length) list.replaceChildren(el('li', { textContent: 'Nothing here yet. Finish a focus session to catch a fish.' }));
     return;
   }
@@ -429,6 +473,11 @@ async function loadTackle(more = false) {
     else if (catches.length) list.replaceChildren(...catches.map(fishCard));
     else list.replaceChildren(el('li', { textContent: 'Nothing here yet. Finish a focus session to catch a fish.' }));
     button.hidden = !hasMore;
+    // Selling in bulk is offered only once a rarity is chosen, so "All" can never sweep up a rare catch.
+    const sellAll = $('#tackle-sell-all');
+    const total = tacklePage.reduce((sum, f) => sum + fishPrice(f), 0);
+    sellAll.hidden = !rarity || !catches.length;
+    sellAll.textContent = `Sell these ${tacklePage.length} for ${total}`;
   } catch (err) {
     $('#tackle-note').textContent = err.message;
   }
@@ -436,6 +485,61 @@ async function loadTackle(more = false) {
 const openTackle = () => loadTackle();
 $('#tackle-filter').addEventListener('change', () => loadTackle());
 $('#tackle-more').addEventListener('click', () => loadTackle(true));
+$('#tackle-sell-all').addEventListener('click', () => {
+  const batch = tacklePage.slice(0, 60);
+  if (confirm(`Sell ${batch.length} fish for ${batch.reduce((sum, f) => sum + fishPrice(f), 0)} coins? This can't be undone.`)) sell(batch.map((f) => f.id), 'them');
+});
+
+// --- Market ---
+function preview(item) {
+  const look = { kind: item.slot === 'angler' ? item.id : prefs.angler, hat: item.slot === 'hat' ? item.id : undefined, face: item.slot === 'face' ? item.id : undefined, rod: item.slot === 'rod' ? item.id : undefined };
+  return el('img', { src: anglerImage(look), alt: `Pixel art preview of the ${item.name}` });
+}
+
+function marketButton(item) {
+  const user = account.user();
+  const coins = user?.coins ?? 0;
+  const inUse = prefs[item.slot] === item.id;
+  const button = el('button', { className: 'btn' });
+  if (!user) {
+    button.textContent = `${item.price} coins`;
+    button.disabled = true;
+  } else if (!owned().includes(item.id)) {
+    button.textContent = coins >= item.price ? `Buy for ${item.price}` : `${item.price} coins (need ${item.price - coins} more)`;
+    button.disabled = coins < item.price;
+    button.addEventListener('click', () => buy(item));
+  } else if (inUse && item.slot === 'angler') {
+    button.textContent = 'In use';
+    button.disabled = true;
+  } else {
+    button.textContent = inUse ? 'Take off' : 'Use';
+    button.addEventListener('click', () => { setPrefs({ [item.slot]: inUse ? DEFAULT_PREFS[item.slot] : item.id }); fillMarket(); });
+  }
+  button.setAttribute('aria-label', `${item.name}: ${button.textContent}`);
+  return button;
+}
+
+function fillMarket() {
+  const user = account.user();
+  $('#market-note').textContent = user ? `You have ${user.coins} coins.` : 'Sign in to earn coins and shop. Guest fish stay on your device, so they can\'t be sold.';
+  const groups = [['Characters', 'angler'], ['Hats', 'hat'], ['Face', 'face'], ['Fishing rods', 'rod']];
+  $('#market-items').replaceChildren(...groups.flatMap(([title, slot]) => [
+    el('h3', { textContent: title }),
+    el('ul', { className: 'market-grid' }, ...inSlot(slot).map((item) => el('li', {}, preview(item), el('strong', { textContent: item.name }), marketButton(item)))),
+  ]));
+}
+
+async function buy(item) {
+  try {
+    const { coins, unlocks } = await api('/api/market/buy', { item: item.id });
+    updateUser({ coins, unlocks });
+    setPrefs({ [item.slot]: item.id }); // Put it on straight away, which is why you bought it.
+    fillMarket();
+    $('#market-note').textContent = `The ${item.name} is yours, and you're using it now. You have ${coins} coins left.`;
+  } catch (err) {
+    $('#market-note').textContent = err.message;
+  }
+}
 
 // --- Customize ---
 function radios(fieldsetId, name, list) {
@@ -445,7 +549,18 @@ function radios(fieldsetId, name, list) {
     return el('label', { className: 'choice' }, input, el('span', { textContent: label }));
   }));
 }
-radios('#pick-angler', 'angler', ANGLERS);
+// Only free options and what this player owns can be picked. Rebuilt whenever that changes.
+function fillCustomize() {
+  const anglers = $('#pick-angler');
+  anglers.querySelectorAll('.choice').forEach((node) => node.remove());
+  radios('#pick-angler', 'angler', [...ANGLERS, ...inSlot('angler').filter((item) => owned().includes(item.id)).map((item) => [item.id, item.name])]);
+  for (const slot of ['hat', 'face', 'rod']) {
+    $(`#pick-${slot}`).replaceChildren(new Option('None', 'none'), ...inSlot(slot).filter((item) => owned().includes(item.id)).map((item) => new Option(item.name, item.id)));
+  }
+  prefs = keepOwned(prefs, owned());
+  applyPrefs();
+}
+for (const slot of ['hat', 'face', 'rod']) $(`#pick-${slot}`).addEventListener('change', (e) => setPrefs({ [slot]: e.target.value }));
 radios('#pick-scene', 'scene', SCENES);
 radios('#pick-layout', 'layout', LAYOUTS);
 const skySelect = $('#pick-sky');
@@ -483,6 +598,8 @@ function fillOdds() {
   $('#odds-rarity').replaceChildren(...RARITIES.map((r, i) => row(r.name, ...tables.map((table) => percent(table[i].odds)))));
 }
 $('#odds-size').append(...SIZES.map((s) => row(s.name, percent(s.odds), `${s.min / 10}–${s.max / 10} lb`)));
+$('#sell-rarity').append(...RARITIES.map((r) => row(r.name, `${RARITY_VALUE[r.id]} coins`)));
+$('#sell-size').append(...SIZES.map((s) => row(s.name, `x${SIZE_MULTIPLIER[s.id]}`)));
 $('#odds-species').textContent = `${SPECIES.map((s) => s.name).join(', ')}. Each is equally likely.`;
 
 // --- Cookie choices: both buttons look the same, and neither is pre-selected ---
@@ -513,16 +630,16 @@ const account = createAccount({
   async onAuth(user) {
     if (user) {
       prefs = user.prefs;
-      applyPrefs();
       syncPanels();
     }
+    showCoins();
     S.round = 1;
     await resume();
   },
 });
 
 // --- Start ---
-applyPrefs();
+fillCustomize();
 syncPanels();
 render();
 (async function boot() {
@@ -530,7 +647,8 @@ render();
     const { user, minuteMs: serverMinute } = await api('/api/me');
     minuteMs = serverMinute;
     account.setUser(user);
-    if (user) { prefs = user.prefs; applyPrefs(); syncPanels(); }
+    if (user) { prefs = user.prefs; syncPanels(); }
+    showCoins();
   } catch {
     account.setUser(null);
     announce("Can't reach the server, so you're fishing as a guest for now.");

@@ -5,7 +5,9 @@ import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { guaranteedRarity, rarityOdds, RARITIES, rollFish, SIZES } from '../public/fish.js';
+import { CATALOG, fishPrice, RARITY_VALUE, SIZE_MULTIPLIER } from '../public/market.js';
 import { DEFAULT_PREFS, FOCUS_MINUTES } from '../public/options.js';
+import { hasSprite } from '../public/sprites.js';
 import { passwordProblem } from '../public/password.js';
 import { createApp, httpMailer, loadConfig, totpCode } from '../server.js';
 import { openTestDb } from './helpers.js';
@@ -55,7 +57,7 @@ before(async () => {
 });
 after(() => { server.close(); db.close(); });
 beforeEach(() => {
-  for (const table of ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'users', 'attempts']) db.run(`DELETE FROM ${table}`);
+  for (const table of ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks', 'users', 'attempts']) db.run(`DELETE FROM ${table}`);
   mails.length = 0;
 });
 
@@ -559,12 +561,14 @@ test('deleting an account removes every row and needs the password', async () =>
   clock.now += 15 * 60_000;
   await call('/api/focus/complete', { body: {}, cookie });
   await call('/api/focus/start', { body: { minutes: 15 }, cookie });
+  db.run('INSERT INTO wallets (user_id, coins) SELECT id, 5 FROM users');
+  db.run("INSERT INTO unlocks (user_id, item, bought_at) SELECT id, 'fox', 1 FROM users");
   assert.equal((await call('/api/account/delete', { body: { password: 'nope' }, cookie })).status, 401);
   assert.equal(db.get('SELECT COUNT(*) n FROM users').n, 1);
   const r = await call('/api/account/delete', { body: { password: PASSWORD }, cookie });
   assert.equal(r.status, 200);
   assert.match(r.res.headers.get('set-cookie'), /Max-Age=0/);
-  for (const table of ['users', 'sessions', 'focus', 'catches', 'tokens', 'recovery']) assert.equal(db.get(`SELECT COUNT(*) n FROM ${table}`).n, 0, table);
+  for (const table of ['users', 'sessions', 'focus', 'catches', 'tokens', 'recovery', 'wallets', 'unlocks']) assert.equal(db.get(`SELECT COUNT(*) n FROM ${table}`).n, 0, table);
   assert.equal((await call('/api/catches', { cookie })).status, 401);
 });
 
@@ -581,7 +585,7 @@ test('no payment code or payment data remains', async () => {
   assert.equal((await call('/api/stripe/webhook', { raw: '{}', method: 'POST', origin: null })).status, 404);
   const cookie = await makeUser('free@example.com');
   const { user } = (await call('/api/me', { cookie })).data;
-  assert.deepEqual(Object.keys(user).sort(), ['email', 'prefs', 'twoFactor']);
+  assert.deepEqual(Object.keys(user).sort(), ['coins', 'email', 'prefs', 'twoFactor', 'unlocks']);
   assert.ok(!Object.keys(db.get('SELECT * FROM users')).some((k) => /supporter|public_ref|stripe/.test(k)));
   const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
   const root = new URL('../', import.meta.url).pathname;
@@ -705,6 +709,117 @@ test('the server rolls with the real session length, and the guarantee holds thr
       assert.ok(ids.indexOf(data.fish.rarity) >= ids.indexOf(floor), `${minutes} min gave ${data.fish.rarity}`);
     }
   }
+});
+
+// --- Selling and the market ---
+function giveFish(userId, rarity, size, weight) {
+  return Number(db.get('INSERT INTO catches (user_id, species, rarity, size, weight, caught_at) VALUES (?, ?, ?, ?, ?, 1) RETURNING id', userId, 'koi', rarity, size, weight).id);
+}
+const coins = async (cookie) => (await call('/api/me', { cookie })).data.user.coins;
+
+test('rarer and bigger fish always sell for more, and every catalog item has art', () => {
+  const rarities = RARITIES.map((r) => r.id);
+  for (const size of SIZES) {
+    for (let i = 1; i < rarities.length; i++) assert.ok(fishPrice({ rarity: rarities[i], size: size.id, weight: size.min }) > fishPrice({ rarity: rarities[i - 1], size: size.id, weight: size.max }), `${rarities[i]} beats ${rarities[i - 1]} even when lighter`);
+  }
+  for (const rarity of rarities) {
+    for (let i = 1; i < SIZES.length; i++) assert.ok(fishPrice({ rarity, size: SIZES[i].id, weight: SIZES[i].min }) > fishPrice({ rarity, size: SIZES[i - 1].id, weight: SIZES[i - 1].max }), `${SIZES[i].id} beats ${SIZES[i - 1].id}`);
+    for (const size of SIZES) assert.ok(fishPrice({ rarity, size: size.id, weight: size.max }) > fishPrice({ rarity, size: size.id, weight: size.min }), 'heavier beats lighter');
+  }
+  assert.equal(fishPrice({ rarity: 'common', size: 'tiny', weight: 1 }), RARITY_VALUE.common * SIZE_MULTIPLIER.tiny);
+  assert.equal(new Set(CATALOG.map((i) => i.id)).size, CATALOG.length);
+  for (const item of CATALOG) { assert.ok(item.price > 0 && Number.isInteger(item.price)); assert.ok(hasSprite(item.id), `${item.id} has art`); }
+});
+
+test('selling pays the stored price once, and the browser cannot set the price', async () => {
+  const cookie = await makeUser('seller@example.com');
+  const { id } = db.get('SELECT id FROM users');
+  const fish = giveFish(id, 'epic', 'huge', 800);
+  const price = fishPrice({ rarity: 'epic', size: 'huge', weight: 800 });
+  assert.equal(await coins(cookie), 0);
+  const sold = await call('/api/sell', { body: { ids: [fish], price: 999999, rarity: 'cosmic' }, cookie });
+  assert.equal(sold.status, 200);
+  assert.deepEqual([sold.data.sold, sold.data.earned, sold.data.coins], [1, price, price]);
+  assert.equal(db.get('SELECT COUNT(*) n FROM catches').n, 0);
+  assert.equal((await call('/api/sell', { body: { ids: [fish] }, cookie })).status, 404, 'already sold');
+  assert.equal(await coins(cookie), price);
+});
+
+test('parallel sales of one fish pay only once', async () => {
+  const cookie = await makeUser('race-sell@example.com');
+  const { id } = db.get('SELECT id FROM users');
+  const fish = giveFish(id, 'gold', 'big', 200);
+  const results = await Promise.all(Array.from({ length: 8 }, () => call('/api/sell', { body: { ids: [fish] }, cookie })));
+  assert.equal(results.filter((r) => r.status === 200).length, 1);
+  assert.equal(await coins(cookie), fishPrice({ rarity: 'gold', size: 'big', weight: 200 }));
+});
+
+test("nobody can sell another player's fish, and bad sale requests are refused", async () => {
+  const alice = await makeUser('alice-sell@example.com');
+  const bob = await makeUser('bob-sell@example.com');
+  const aliceId = db.get('SELECT id FROM users WHERE email = ?', 'alice-sell@example.com').id;
+  const fish = giveFish(aliceId, 'cosmic', 'huge', 1000);
+  assert.equal((await call('/api/sell', { body: { ids: [fish] }, cookie: bob })).status, 404);
+  assert.equal(db.get('SELECT COUNT(*) n FROM catches').n, 1);
+  assert.equal(await coins(bob), 0);
+  for (const ids of [undefined, [], 'x', [1.5], ['1'], [fish, fish], Array.from({ length: 61 }, (_, i) => i + 1), [{ id: fish }]]) assert.equal((await call('/api/sell', { body: { ids }, cookie: alice })).status, 400, JSON.stringify(ids)?.slice(0, 30));
+  assert.equal((await call('/api/sell', { body: { ids: [fish] } })).status, 401, 'needs a session');
+  assert.equal((await call('/api/market/buy', { body: { item: 'fox' } })).status, 401);
+  const mixed = await call('/api/sell', { body: { ids: [fish, 999999] }, cookie: alice });
+  assert.equal(mixed.data.sold, 1, 'only owned fish count');
+});
+
+test('buying charges the catalog price once and refuses when coins run short', async () => {
+  const cookie = await makeUser('buyer@example.com');
+  const { id } = db.get('SELECT id FROM users');
+  assert.equal((await call('/api/market/buy', { body: { item: 'fox' }, cookie })).status, 409, 'no wallet yet');
+  db.run('INSERT INTO wallets (user_id, coins) VALUES (?, 299)', id);
+  const short = await call('/api/market/buy', { body: { item: 'fox', price: 1 }, cookie });
+  assert.equal(short.status, 409);
+  assert.match(short.data.error, /enough coins/);
+  assert.equal(await coins(cookie), 299);
+  db.run('UPDATE wallets SET coins = 700 WHERE user_id = ?', id);
+  const bought = await call('/api/market/buy', { body: { item: 'fox', price: 1 }, cookie });
+  assert.deepEqual([bought.status, bought.data.coins, bought.data.unlocks], [200, 400, ['fox']]);
+  const again = await call('/api/market/buy', { body: { item: 'fox' }, cookie });
+  assert.equal(again.status, 409);
+  assert.match(again.data.error, /already own/);
+  assert.equal(await coins(cookie), 400, 'no double charge');
+  for (const item of ['nope', '__proto__', 'constructor', 'cat', null, 5, {}]) assert.equal((await call('/api/market/buy', { body: { item }, cookie })).status, 400, String(item));
+});
+
+test('parallel purchases cannot overspend or double charge', async () => {
+  const cookie = await makeUser('race-buy@example.com');
+  const { id } = db.get('SELECT id FROM users');
+  db.run('INSERT INTO wallets (user_id, coins) VALUES (?, 700)', id);
+  const same = await Promise.all(Array.from({ length: 6 }, () => call('/api/market/buy', { body: { item: 'penguin' }, cookie })));
+  assert.equal(same.filter((r) => r.status === 200).length, 1);
+  assert.equal(await coins(cookie), 100);
+  db.run('UPDATE wallets SET coins = 650 WHERE user_id = ?', id);
+  const different = await Promise.all(['fox', 'piratehat', 'neonrod', 'wizardhat'].map((item) => call('/api/market/buy', { body: { item }, cookie })));
+  const left = await coins(cookie);
+  assert.ok(left >= 0 && different.some((r) => r.status === 200) && different.some((r) => r.status === 409), `left ${left}`);
+  const spent = different.filter((r) => r.status === 200).length;
+  assert.equal(db.get('SELECT COUNT(*) n FROM unlocks').n, 1 + spent);
+});
+
+test('locked items cannot be equipped from the browser, and owned ones can', async () => {
+  const cookie = await makeUser('wear@example.com');
+  const { id } = db.get('SELECT id FROM users');
+  const tried = await call('/api/prefs', { body: { angler: 'astronaut', hat: 'crown', face: 'sunglasses', rod: 'goldrod' }, cookie });
+  assert.deepEqual([tried.data.prefs.angler, tried.data.prefs.hat, tried.data.prefs.face, tried.data.prefs.rod], ['cat', 'none', 'none', 'none']);
+  db.run('INSERT INTO wallets (user_id, coins) VALUES (?, 5000)', id);
+  await call('/api/market/buy', { body: { item: 'crown' }, cookie });
+  await call('/api/market/buy', { body: { item: 'robot' }, cookie });
+  const worn = await call('/api/prefs', { body: { angler: 'robot', hat: 'crown', face: 'sunglasses' }, cookie });
+  assert.deepEqual([worn.data.prefs.angler, worn.data.prefs.hat, worn.data.prefs.face], ['robot', 'crown', 'none']);
+  assert.equal((await call('/api/me', { cookie })).data.user.prefs.angler, 'robot');
+  assert.equal((await call('/api/prefs', { body: { hat: 'partyhat' }, cookie })).data.prefs.hat, 'none');
+  db.run('DELETE FROM unlocks WHERE user_id = ?', id);
+  assert.equal((await call('/api/me', { cookie })).data.user.prefs.angler, 'cat', 'a stored item that is no longer owned falls back');
+  const exported = await call('/api/export', { cookie });
+  assert.equal(exported.data.account.coins, await coins(cookie));
+  assert.deepEqual(exported.data.account.unlocks, []);
 });
 
 test('password rules catch weak choices and allow good ones', () => {

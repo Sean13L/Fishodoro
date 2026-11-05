@@ -138,6 +138,14 @@ th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
 .kicker { font-weight: 500; margin-top: 0; }
 @keyframes pop { from { transform: scale(.5); } to { transform: scale(1); } }
 
+#coins { margin: 0 auto 0 16px; font-weight: 500; }
+#market-items { display: grid; gap: 4px; }
+.market-grid { list-style: none; padding: 0; margin: 8px 0 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+.market-grid li { border: 3px solid var(--edge); padding: 8px; display: grid; gap: 6px; align-content: start; }
+.market-grid img { image-rendering: pixelated; width: 84px; height: 96px; justify-self: center; background: var(--page); }
+.market-grid strong { font-weight: 500; }
+#tackle-list table { width: 100%; }
+#guide table + table { margin-top: 10px; }
 #tackle-list { list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
 #tackle-list li { border: 3px solid var(--edge); padding: 8px; display: grid; gap: 4px; align-content: start; }
 #tackle-list img { image-rendering: pixelated; justify-self: center; width: auto; height: 60px; max-width: 100%; object-fit: contain; }

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import qrcode from 'qrcode-generator';
 import { RARITIES, rollFish } from './public/fish.js';
-import { cleanPrefs, isFocusLength, MAX_FOCUS, MIN_FOCUS } from './public/options.js';
+import { catalogItem, fishPrice } from './public/market.js';
+import { cleanPrefs, isFocusLength, keepOwned, MAX_FOCUS, MIN_FOCUS } from './public/options.js';
 import { MAX_PASSWORD, passwordProblem } from './public/password.js';
 
 const PUBLIC = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
@@ -263,16 +264,24 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
     return { minutes: row.minutes, startedAt: row.started_at, remainingMs: Math.max(0, row.started_at + duration - now()) };
   }
 
-  const publicUser = (u) => ({
-    email: u.email,
-    twoFactor: !!u.totp_enabled,
-    prefs: cleanPrefs(JSON.parse(u.prefs)),
-  });
+  const coinsOf = async (userId) => (await db.get('SELECT coins FROM wallets WHERE user_id = ?', userId))?.coins ?? 0;
+  const unlocksOf = async (userId) => (await db.all('SELECT item FROM unlocks WHERE user_id = ?', userId)).map((row) => row.item);
+
+  const publicUser = async (u) => {
+    const unlocks = await unlocksOf(u.id);
+    return {
+      email: u.email,
+      twoFactor: !!u.totp_enabled,
+      prefs: keepOwned(cleanPrefs(JSON.parse(u.prefs)), unlocks),
+      coins: await coinsOf(u.id),
+      unlocks,
+    };
+  };
 
   // Every route needs a session unless it's explicitly marked open.
   const open = (fn) => Object.assign(fn, { open: true });
   const routes = {
-    'GET /api/me': open(({ user }) => ({ user: user ? publicUser(user) : null, minuteMs })),
+    'GET /api/me': open(async ({ user }) => ({ user: user ? await publicUser(user) : null, minuteMs })),
 
     'POST /api/signup': open(async ({ body, ip }) => {
       const email = asEmail(body.email);
@@ -328,7 +337,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       }
       await clearAttempts(`login-acct:${email}`);
       await startSession(res, user);
-      return { user: publicUser(user) };
+      return { user: await publicUser(user) };
     }),
 
     'POST /api/logout': async ({ res, tokenHash }) => {
@@ -420,7 +429,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
     },
 
     'POST /api/prefs': async ({ body, user }) => {
-      const prefs = cleanPrefs(body);
+      const prefs = keepOwned(cleanPrefs(body), await unlocksOf(user.id));
       await db.run('UPDATE users SET prefs = ? WHERE id = ?', JSON.stringify(prefs), user.id);
       return { prefs };
     },
@@ -469,10 +478,40 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       return { catches, counts, more: catches.length === limit };
     },
 
+    // Prices come from the stored fish, and each sale pays only if its own DELETE removed the fish,
+    // so a fish can't be sold twice, sold by anyone else, or priced by the browser.
+    'POST /api/sell': async ({ body, user }) => {
+      const ids = body.ids;
+      if (!Array.isArray(ids) || !ids.length || ids.length > 60 || !ids.every(Number.isSafeInteger) || new Set(ids).size !== ids.length) fail(400, 'Choose up to 60 fish to sell.');
+      const fish = await db.all(`SELECT id, rarity, size, weight FROM catches WHERE user_id = ? AND id IN (${ids.map(() => '?').join(', ')})`, user.id, ...ids);
+      if (!fish.length) fail(404, 'Those fish are no longer in your Tackle Box.');
+      const results = await db.batch(fish.flatMap((f) => [
+        ['DELETE FROM catches WHERE id = ? AND user_id = ?', f.id, user.id],
+        ['INSERT INTO wallets (user_id, coins) SELECT ?, ? WHERE changes() = 1 ON CONFLICT(user_id) DO UPDATE SET coins = coins + excluded.coins', user.id, fishPrice(f)],
+      ]));
+      const earned = fish.reduce((sum, f, i) => sum + (results[i * 2].rowsAffected ? fishPrice(f) : 0), 0);
+      const sold = fish.filter((f, i) => results[i * 2].rowsAffected).length;
+      if (!sold) fail(404, 'Those fish are no longer in your Tackle Box.');
+      return { sold, earned, coins: await coinsOf(user.id) };
+    },
+
+    // One transaction: the item is added only if this request's payment went through.
+    'POST /api/market/buy': async ({ body, user }) => {
+      const item = catalogItem(body.item);
+      if (!item) fail(400, 'That item is not in the market.');
+      const [, added] = await db.batch([
+        ['UPDATE wallets SET coins = coins - ? WHERE user_id = ? AND coins >= ? AND NOT EXISTS (SELECT 1 FROM unlocks WHERE user_id = ? AND item = ?)', item.price, user.id, item.price, user.id, item.id],
+        ['INSERT INTO unlocks (user_id, item, bought_at) SELECT ?, ?, ? WHERE changes() = 1', user.id, item.id, now()],
+      ]);
+      const unlocks = await unlocksOf(user.id);
+      if (!added.rowsAffected) fail(409, unlocks.includes(item.id) ? 'You already own that.' : "You don't have enough coins for that yet.");
+      return { coins: await coinsOf(user.id), unlocks };
+    },
+
     'GET /api/export': async ({ user, res }) => {
       res.setHeader('Content-Disposition', 'attachment; filename="fishodoro-data.json"');
       return {
-        account: { email: user.email, createdAt: user.created_at, consentVersion: user.consent_version, consentAt: user.consent_at, twoFactor: !!user.totp_enabled, prefs: JSON.parse(user.prefs) },
+        account: { email: user.email, createdAt: user.created_at, consentVersion: user.consent_version, consentAt: user.consent_at, twoFactor: !!user.totp_enabled, prefs: JSON.parse(user.prefs), coins: await coinsOf(user.id), unlocks: await unlocksOf(user.id) },
         catches: await db.all('SELECT species, rarity, size, weight, caught_at FROM catches WHERE user_id = ? ORDER BY id', user.id),
       };
     },

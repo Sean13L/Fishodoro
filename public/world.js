@@ -1,5 +1,5 @@
 import { drawCity } from './cities.js';
-import { drawAngler, drawFish, FISH_H, FISH_W, pixelLine, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
+import { drawAngler, drawFish, FISH_H, FISH_W, pixelLine, RARITY_COLORS, rarityIndexOf, rect, RODS } from './sprites.js';
 import { resolveSky } from './themes.js';
 import { sfx } from './sfx.js';
 
@@ -291,6 +291,7 @@ export function createWorld(canvas) {
   const sceneryC = scenery.getContext('2d');
   let beacons = [];
   c.imageSmoothingEnabled = false;
+  let hat = 'none', face = 'none', rod = 'none';
   let angler = 'cat', scene = SCENES.dock, sceneId = 'dock', skyId = 'adaptive', theme = null;
   let state = 'idle', since = 0, fish = null, playedSplash = true;
 
@@ -359,7 +360,7 @@ export function createWorld(canvas) {
       const k = i / ROD;
       const px = hand.x + (tip.x - hand.x) * k;
       const py = hand.y + (tip.y - hand.y) * k + Math.sin(k * Math.PI) * -bend * 0.4;
-      rect(c, px, py, 1, 1, i < 7 ? '#2a1a10' : '#8a5a34');
+      rect(c, px, py, 1, 1, RODS[rod]?.[i < 7 ? 0 : 1] ?? '#8a5a34');
     }
     pixelLine(c, pose.shoulder.x, pose.shoulder.y, hand.x, hand.y, arm);
     pixelLine(c, pose.shoulder.x, pose.shoulder.y + 1, hand.x, hand.y + 1, arm);
@@ -436,7 +437,7 @@ export function createWorld(canvas) {
     const seat = scene.seat(t);
     scene.front?.(c, th, t, seat, state);
     const eyesClosed = state === 'break' || (!still() && t % 4 < 0.14);
-    const pose = drawAngler(c, angler, seat.x, seat.y, { eyesClosed, t });
+    const pose = drawAngler(c, angler, seat.x, seat.y, { eyesClosed, t, hat, face });
     const tip = drawRodAndLine(pose, t, age, seat);
     if (state === 'bite') {
       rect(c, seat.x + 5, pose.top - 12, 3, 7, '#ffffff'); rect(c, seat.x + 5, pose.top - 3, 3, 2, '#ffffff');
@@ -467,8 +468,8 @@ export function createWorld(canvas) {
   requestAnimationFrame(frame);
 
   return {
-    configure({ angler: a, scene: s, sky }) {
-      angler = a;
+    configure({ angler: a, scene: s, sky, hat: h, face: f, rod: r }) {
+      angler = a; hat = h; face = f; rod = r;
       if (s !== sceneId || sky !== skyId) {
         sceneId = s; skyId = sky; scene = SCENES[s] ?? SCENES.dock;
         repaint();

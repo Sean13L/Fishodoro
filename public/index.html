@@ -15,8 +15,10 @@
   <div id="app">
     <header class="plate topbar">
       <h1>Fishodoro</h1>
+      <p id="coins" hidden></p>
       <nav aria-label="Main">
         <button class="btn" data-open="tackle">Tackle Box</button>
+        <button class="btn" data-open="market">Market</button>
         <button class="btn" data-open="customize">Customize</button>
         <button class="btn" data-open="guide">Guide</button>
         <button class="btn" id="account-button" data-open="account">Sign in</button>
@@ -98,11 +100,15 @@
   <dialog id="tackle" class="plate" aria-labelledby="tackle-title">
     <div class="dialog-head"><h2 id="tackle-title">Tackle Box</h2><button class="btn" data-close>Close</button></div>
     <p id="tackle-note"></p>
+    <p id="tackle-coins" role="status"></p>
     <label class="field">Show
       <select id="tackle-filter"></select>
     </label>
     <ul id="tackle-list"></ul>
-    <button class="btn" id="tackle-more" hidden>Show more</button>
+    <div class="actions">
+      <button class="btn" id="tackle-more" hidden>Show more</button>
+      <button class="btn" id="tackle-sell-all" hidden>Sell these</button>
+    </div>
   </dialog>
 
   <dialog id="customize" class="plate" aria-labelledby="customize-title">
@@ -111,9 +117,20 @@
       <select id="pick-sky"></select>
     </label>
     <fieldset id="pick-angler"><legend>Angler</legend></fieldset>
+    <label class="field">Hat <select id="pick-hat"></select></label>
+    <label class="field">Face <select id="pick-face"></select></label>
+    <label class="field">Fishing rod <select id="pick-rod"></select></label>
+    <p>Unlock more characters and cosmetics in the Market.</p>
     <fieldset id="pick-scene"><legend>Scene</legend></fieldset>
     <fieldset id="pick-layout"><legend>Layout</legend></fieldset>
     <p id="customize-note"></p>
+  </dialog>
+
+  <dialog id="market" class="plate" aria-labelledby="market-title">
+    <div class="dialog-head"><h2 id="market-title">Market</h2><button class="btn" data-close>Close</button></div>
+    <p>Sell fish in the Tackle Box to earn coins, then spend them here. Coins are only for fun: they can't be bought, cashed out or traded.</p>
+    <p id="market-note" role="status"></p>
+    <div id="market-items"></div>
   </dialog>
 
   <dialog id="guide" class="plate" aria-labelledby="guide-title">
@@ -123,6 +140,10 @@
     <table><thead id="odds-rarity-head"></thead><tbody id="odds-rarity"></tbody></table>
     <h3>Size</h3>
     <table><thead><tr><th scope="col">Size</th><th scope="col">Chance</th><th scope="col">Weight</th></tr></thead><tbody id="odds-size"></tbody></table>
+    <h3>Selling</h3>
+    <p>Signed-in players can sell fish in the Tackle Box. A fish's price is its rarity value times its size multiplier, plus up to 25% for being heavy for its size. A sold fish is gone for good.</p>
+    <table><thead><tr><th scope="col">Rarity</th><th scope="col">Value</th></tr></thead><tbody id="sell-rarity"></tbody></table>
+    <table><thead><tr><th scope="col">Size</th><th scope="col">Multiplier</th></tr></thead><tbody id="sell-size"></tbody></table>
     <h3>Species</h3>
     <p id="odds-species"></p>
     <p>Rarity, size and species are rolled separately. The Adaptive and city skies follow your device's clock, which stays on your device.</p>

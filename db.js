@@ -44,10 +44,20 @@ CREATE TABLE IF NOT EXISTS recovery (
 );
 CREATE TABLE IF NOT EXISTS attempts (key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS attempts_key ON attempts(key, at);
+CREATE TABLE IF NOT EXISTS wallets (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  coins INTEGER NOT NULL DEFAULT 0 CHECK (coins >= 0)
+);
+CREATE TABLE IF NOT EXISTS unlocks (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  item TEXT NOT NULL,
+  bought_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, item)
+);
 `;
 
 const WEEK = 7 * 864e5;
-const USER_TABLES = ['focus', 'catches', 'tokens', 'recovery', 'sessions'];
+const USER_TABLES = ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks'];
 
 const plain = ({ columns, rows }) => rows.map((row) => Object.fromEntries(columns.map((c) => [c, row[c]])));
 
