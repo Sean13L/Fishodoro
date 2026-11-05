@@ -80,7 +80,13 @@ export function totpCode(secret, counter) {
 
 // --- Configuration: production refuses to start with anything missing ---
 export function loadConfig(env = process.env) {
-  const production = env.NODE_ENV === 'production';
+  const appUrl = new URL(env.APP_URL || 'http://localhost:3000');
+  const local = (host) => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host);
+  const fastTimer = env.FAST_TEST_TIMER === '1';
+  if (fastTimer && (env.NODE_ENV === 'production' || !local(appUrl.hostname))) throw new Error('FAST_TEST_TIMER is for local testing only.');
+  // Anything reachable from outside this machine counts as production, even if NODE_ENV was forgotten,
+  // so the development secret and console mail can never serve real users.
+  const production = env.NODE_ENV === 'production' || !local(appUrl.hostname) || (!!env.HOST && !local(env.HOST));
   if (production) {
     const required = ['APP_URL', 'APP_SECRET', 'OPERATOR_NAME', 'OPERATOR_ADDRESS', 'OPERATOR_EMAIL', 'GOVERNING_LAW', 'MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_FROM'];
     const missing = required.filter((key) => !env[key]);
@@ -88,9 +94,6 @@ export function loadConfig(env = process.env) {
     if (env.APP_SECRET.length < 32) throw new Error('APP_SECRET must be at least 32 characters.');
     if (new URL(env.APP_URL).protocol !== 'https:') throw new Error('APP_URL must use https in production.');
   }
-  const appUrl = new URL(env.APP_URL || 'http://localhost:3000');
-  const fastTimer = env.FAST_TEST_TIMER === '1';
-  if (fastTimer && (production || !['localhost', '127.0.0.1'].includes(appUrl.hostname))) throw new Error('FAST_TEST_TIMER is for local testing only.');
   return {
     production,
     origin: appUrl.origin,
@@ -218,9 +221,9 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       const secret = decrypt(user.totp_secret);
       const current = Math.floor(now() / 30_000);
       for (const counter of [current - 1, current, current + 1]) {
-        if (counter > user.totp_last && safeEqual(totpCode(secret, counter), value)) {
-          db.run('UPDATE users SET totp_last = ? WHERE id = ?', counter, user.id);
-          return true;
+        if (safeEqual(totpCode(secret, counter), value)) {
+          // Checked in the UPDATE itself, because parallel logins can hold the same stale row.
+          return db.run('UPDATE users SET totp_last = ? WHERE id = ? AND totp_last < ?', counter, user.id, counter).changes === 1;
         }
       }
       return false;
@@ -369,7 +372,8 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       if (user.totp_enabled) fail(409, '2FA is already on.');
       await reauth(user, body);
       const secret = crypto.randomBytes(20);
-      db.run('UPDATE users SET totp_secret = ? WHERE id = ?', encrypt(secret), user.id);
+      const { changes } = db.run('UPDATE users SET totp_secret = ? WHERE id = ? AND totp_enabled = 0', encrypt(secret), user.id);
+      if (!changes) fail(409, '2FA is already on.');
       const key = base32(secret);
       const uri = `otpauth://totp/Fishodoro:${encodeURIComponent(user.email)}?secret=${key}&issuer=Fishodoro`;
       const qr = qrcode(0, 'M');
@@ -378,13 +382,14 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       return { key, qr: qr.createDataURL(4, 8) };
     },
 
-    'POST /api/2fa/enable': ({ body, user }) => {
+    'POST /api/2fa/enable': ({ body, user, tokenHash }) => {
       if (user.totp_enabled || !user.totp_secret) fail(409, 'Start 2FA setup first.');
       attempt(`2fa-enable:${user.id}`, 10, 15 * MINUTE);
       if (!/^\d{6}$/.test(String(body.code ?? '').trim()) || !checkSecondFactor(user, body.code)) fail(400, 'That code did not work.');
       const codes = Array.from({ length: 8 }, () => crypto.randomBytes(8).toString('hex'));
       db.tx(() => {
         db.run('UPDATE users SET totp_enabled = 1 WHERE id = ?', user.id);
+        db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', user.id, tokenHash);
         db.run('DELETE FROM recovery WHERE user_id = ?', user.id);
         for (const code of codes) db.run('INSERT INTO recovery (hash, user_id) VALUES (?, ?)', sha256(code), user.id);
       });

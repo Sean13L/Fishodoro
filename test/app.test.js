@@ -151,6 +151,13 @@ test('a production cookie uses __Host- and Secure', () => {
   assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'https://x.example', APP_SECRET: 'short', OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /APP_SECRET/);
 });
 
+test('development fallbacks can never run on a reachable address, even if NODE_ENV is forgotten', () => {
+  assert.throws(() => loadConfig({ APP_URL: 'https://fish.example' }), /Missing required settings/);
+  assert.throws(() => loadConfig({ HOST: '0.0.0.0' }), /Missing required settings/);
+  assert.equal(loadConfig({ HOST: '127.0.0.1' }).production, false);
+  assert.equal(loadConfig({ APP_URL: 'http://localhost:4173' }).production, false);
+});
+
 test('the fast test timer works locally and can never reach a real deployment', () => {
   assert.equal(loadConfig({}).minuteMs, 60_000);
   assert.equal(loadConfig({ FAST_TEST_TIMER: '0' }).minuteMs, 60_000);
@@ -418,6 +425,27 @@ test('2FA: setup, replay protection, recovery codes, and disabling', async () =>
   assert.equal((await call('/api/2fa/disable', { body: { password: PASSWORD, code: enable.data.recoveryCodes[1] }, cookie })).status, 200);
   assert.equal(db.get('SELECT COUNT(*) n FROM recovery').n, 0);
   assert.equal(db.get('SELECT totp_secret FROM users').totp_secret, null);
+});
+
+test('parallel logins can use one 2FA code only once', async () => {
+  const cookie = await makeUser('race@example.com');
+  const { data: { key } } = await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie });
+  const secret = fromBase32(key);
+  await call('/api/2fa/enable', { body: { code: totpCode(secret, Math.floor(clock.now / 30_000)) }, cookie });
+  clock.now += 60_000;
+  const code = totpCode(secret, Math.floor(clock.now / 30_000));
+  const results = await Promise.all(Array.from({ length: 5 }, () => call('/api/login', { body: { email: 'race@example.com', password: PASSWORD, code } })));
+  assert.equal(results.filter((r) => r.status === 200).length, 1);
+});
+
+test('turning on 2FA signs out other devices and keeps this one', async () => {
+  const here = await makeUser('devices@example.com');
+  const other = await login('devices@example.com');
+  const { data: { key } } = await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie: here });
+  await call('/api/2fa/enable', { body: { code: totpCode(fromBase32(key), Math.floor(clock.now / 30_000)) }, cookie: here });
+  assert.equal((await call('/api/catches', { cookie: here })).status, 200);
+  assert.equal((await call('/api/catches', { cookie: other })).status, 401);
+  assert.equal((await call('/api/2fa/setup', { body: { password: PASSWORD }, cookie: here })).status, 409);
 });
 
 test('2FA codes are rate limited at login', async () => {

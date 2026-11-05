@@ -9,7 +9,7 @@
 ## Sessions and browser
 
 - 256-bit random token in a `__Host-` HttpOnly, Secure, SameSite=Strict cookie, stored only as a SHA-256 hash, for 30 days at most. Nothing sensitive goes in localStorage.
-- Password resets end all sessions. Password changes end all other sessions.
+- Password resets end all sessions. Password changes and turning on 2FA end all other sessions.
 - Writes also require a matching `Origin` and a JSON content type.
 - CSP is `default-src 'none'` with same-origin allowances only: no inline scripts or styles, no third-party origins. User-facing values reach the DOM as text, never as HTML.
 
