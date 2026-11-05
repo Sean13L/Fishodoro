@@ -143,12 +143,12 @@ test('the session cookie is HttpOnly and SameSite=Strict, and the token is store
 });
 
 test('a production cookie uses __Host- and Secure', () => {
-  const prod = loadConfig({ NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e@e.co', GOVERNING_LAW: 'l', MAIL_API_URL: 'https://m.example', MAIL_API_KEY: 'k', MAIL_FROM: 'f@e.co' });
+  const prod = loadConfig({ NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e@e.co', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'https://m.example', MAIL_API_KEY: 'k', MAIL_FROM: 'f@e.co' });
   assert.equal(prod.secure, true);
   assert.throws(() => loadConfig({ NODE_ENV: 'production' }), /Missing required settings/);
   assert.equal(prod.minuteMs, 60_000);
-  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'http://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /https/);
-  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'https://x.example', APP_SECRET: 'short', OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /APP_SECRET/);
+  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'http://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /https/);
+  assert.throws(() => loadConfig({ NODE_ENV: 'production', APP_URL: 'https://x.example', APP_SECRET: 'short', OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /APP_SECRET/);
 });
 
 test('development fallbacks can never run on a reachable address, even if NODE_ENV is forgotten', () => {
@@ -163,7 +163,7 @@ test('the fast test timer works locally and can never reach a real deployment', 
   assert.equal(loadConfig({ FAST_TEST_TIMER: '0' }).minuteMs, 60_000);
   assert.equal(loadConfig({ FAST_TEST_TIMER: '1' }).minuteMs, 1000);
   assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', APP_URL: 'https://fish.example' }), /local testing only/);
-  assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /local testing only/);
+  assert.throws(() => loadConfig({ FAST_TEST_TIMER: '1', NODE_ENV: 'production', APP_URL: 'https://fish.example', APP_SECRET: 'x'.repeat(40), OPERATOR_NAME: 'n', OPERATOR_ADDRESS: 'a', OPERATOR_EMAIL: 'e', GOVERNING_LAW: 'l', DATA_LOCATION: 'd', MAIL_API_URL: 'u', MAIL_API_KEY: 'k', MAIL_FROM: 'f' }), /local testing only/);
 });
 
 test('emails go out in the format the provider expects, and failures surface', async () => {
@@ -528,7 +528,7 @@ test('static files cannot escape public/', async () => {
 });
 
 test('legal pages exist, contain operator details and escape them', async () => {
-  const cfg = loadConfig({ OPERATOR_NAME: 'Fish <b>Co</b>', OPERATOR_ADDRESS: '1 Lake Rd', OPERATOR_EMAIL: 'hi@fish.example', GOVERNING_LAW: 'Atlantis' });
+  const cfg = loadConfig({ OPERATOR_NAME: 'Fish <b>Co</b>', OPERATOR_ADDRESS: '1 Lake Rd', OPERATOR_EMAIL: 'hi@fish.example', GOVERNING_LAW: 'the laws of Atlantis', DATA_LOCATION: 'Testland' });
   const app = http.createServer(createApp({ config: cfg, db: openDb(), mail: async () => {} }));
   await new Promise((r) => app.listen(0, '127.0.0.1', r));
   const at = `http://127.0.0.1:${app.address().port}`;
@@ -539,6 +539,11 @@ test('legal pages exist, contain operator details and escape them', async () => 
     assert.ok(!html.includes('{{'), page);
   }
   assert.ok((await (await fetch(`${at}/legal/terms.html`)).text()).includes('Atlantis'));
+  const privacy = await (await fetch(`${at}/legal/privacy.html`)).text();
+  assert.ok(privacy.includes('stored in Testland') && privacy.includes('Privacy Commissioner of Canada'));
+  assert.ok(!/legal basis|data controller|legitimate interest|contractual clauses/i.test(privacy), 'no GDPR-only framing');
+  assert.equal([...privacy.matchAll(/<tr><td>/g)].length, 7);
+  assert.equal([...privacy.matchAll(/<td>/g)].length, 21, 'every row keeps its three columns');
   const index = await (await fetch(at)).text();
   assert.ok(index.includes('1 Lake Rd') && !index.includes('{{'));
   app.close();

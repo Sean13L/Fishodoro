@@ -33,7 +33,7 @@ Locally, emails print to the console, so that's where to find verification and r
 
 ## Before launch
 
-- Have a lawyer review `public/legal/*`. They're plain-language drafts, not legal advice. Check the age limit (16) and the 30-day response time.
+- Have a lawyer review `public/legal/*`. They're plain-language drafts, not legal advice. Check the age limit (16) and the 30-day response time. They're written for an operator in Ontario under PIPEDA, so users or marketing in Quebec or the EU need another look.
 - Update `CONSENT_VERSION` in `server.js` and the dates on the legal pages whenever the Terms or Privacy Policy change.
 
 ## Layout

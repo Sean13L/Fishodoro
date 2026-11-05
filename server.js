@@ -88,7 +88,7 @@ export function loadConfig(env = process.env) {
   // so the development secret and console mail can never serve real users.
   const production = env.NODE_ENV === 'production' || !local(appUrl.hostname) || (!!env.HOST && !local(env.HOST));
   if (production) {
-    const required = ['APP_URL', 'APP_SECRET', 'OPERATOR_NAME', 'OPERATOR_ADDRESS', 'OPERATOR_EMAIL', 'GOVERNING_LAW', 'MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_FROM'];
+    const required = ['APP_URL', 'APP_SECRET', 'OPERATOR_NAME', 'OPERATOR_ADDRESS', 'OPERATOR_EMAIL', 'GOVERNING_LAW', 'DATA_LOCATION', 'MAIL_API_URL', 'MAIL_API_KEY', 'MAIL_FROM'];
     const missing = required.filter((key) => !env[key]);
     if (missing.length) throw new Error(`Missing required settings: ${missing.join(', ')}`);
     if (env.APP_SECRET.length < 32) throw new Error('APP_SECRET must be at least 32 characters.');
@@ -107,6 +107,7 @@ export function loadConfig(env = process.env) {
       OPERATOR_ADDRESS: env.OPERATOR_ADDRESS || '[Operator address not configured]',
       OPERATOR_EMAIL: env.OPERATOR_EMAIL || '[Contact email not configured]',
       GOVERNING_LAW: env.GOVERNING_LAW || '[Governing law not configured]',
+      DATA_LOCATION: env.DATA_LOCATION || '[Data location not configured]',
     },
   };
 }
