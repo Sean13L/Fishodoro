@@ -1,5 +1,6 @@
 // Shared by browser (guest catches, Fishing Guide) and server (account catches).
-// Odds are out of 10,000 so the table stays exact integers. badge is [background, text].
+// Odds are out of 10,000 so the table stays exact integers. They are the odds for a 25-minute session
+// (see rarityOdds for other lengths). badge is [background, text].
 export const RARITIES = [
   { id: 'common', name: 'Common', odds: 5500, badge: ['#e2e6ea', '#1a1c2c'] },
   { id: 'uncommon', name: 'Uncommon', odds: 2500, badge: ['#1f7a3d', '#ffffff'] },
@@ -24,12 +25,27 @@ export const SPECIES = ['Minnow', 'Perch', 'Bass', 'Trout', 'Catfish', 'Puffer',
 
 const pick = (table, roll) => table.find((row) => (roll -= row.odds) < 0);
 
-// rand(n) must return a uniform integer in [0, n).
-export function rollFish(rand) {
+// Session lengths that guarantee a rarity or better.
+export const GUARANTEES = [{ minutes: 30, rarity: 'uncommon' }, { minutes: 45, rarity: 'rare' }, { minutes: 60, rarity: 'epic' }];
+const BASE_MINUTES = 25;
+
+export const guaranteedRarity = (minutes) => GUARANTEES.findLast((g) => minutes >= g.minutes)?.rarity ?? null;
+
+// Each tier above the guarantee scales with session length. The guaranteed tier takes what's left,
+// and tiers below it can't be caught, so the table always adds up to exactly 10,000.
+export function rarityOdds(minutes) {
+  const floor = Math.max(0, RARITIES.findIndex((r) => r.id === guaranteedRarity(minutes)));
+  const scaled = RARITIES.map((r, i) => (i > floor ? Math.round((r.odds * minutes) / BASE_MINUTES) : 0));
+  scaled[floor] = 10000 - scaled.reduce((sum, odds) => sum + odds, 0);
+  return RARITIES.map((r, i) => ({ ...r, odds: scaled[i] }));
+}
+
+// rand(n) must return a uniform integer in [0, n). minutes is the length of the finished session.
+export function rollFish(rand, minutes) {
   const size = pick(SIZES, rand(10000));
   return {
     species: SPECIES[rand(SPECIES.length)].id,
-    rarity: pick(RARITIES, rand(10000)).id,
+    rarity: pick(rarityOdds(minutes), rand(10000)).id,
     size: size.id,
     weight: size.min + rand(size.max - size.min + 1),
   };

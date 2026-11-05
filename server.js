@@ -445,7 +445,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       const active = await activeFocus(user.id);
       if (!active) fail(404, 'There is no focus session to reel in.');
       if (active.remainingMs > 0) fail(409, 'That session is not finished yet.', { retryAfterMs: active.remainingMs });
-      const fish = rollFish(crypto.randomInt);
+      const fish = rollFish(crypto.randomInt, active.minutes);
       // One transaction: only the request whose DELETE removed the session gets a fish.
       const [, inserted] = await db.batch([
         ['DELETE FROM focus WHERE user_id = ? AND started_at = ?', user.id, active.startedAt],

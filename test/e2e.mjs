@@ -457,6 +457,24 @@ await step('a city sky changes with the clock, even while the page stays open', 
   assert.equal(await plate(), '#2d1b3d', 'sunset colours at 5:00 pm, without a reload');
   await ctx.close();
 });
+await step('session length shows its guarantee, and the Guide publishes odds for that length', async () => {
+  const { ctx, page } = await open();
+  await page.click('#cookies-essential');
+  assert.match(await text(page, '#focus-perk'), /30 minutes guarantees Uncommon or better/);
+  await page.check('input[name=focus][value="60"]', { force: true });
+  assert.match(await text(page, '#focus-perk'), /60 minutes guarantees Epic or better.*7\.2%/);
+  await page.check('input[name=focus][value="15"]', { force: true });
+  assert.match(await text(page, '#focus-perk'), /Focus for 30 minutes/);
+  await page.fill('#focus-custom', '90');
+  await page.locator('#focus-custom').blur();
+  await page.click('[data-open=guide]');
+  const heads = await page.locator('#odds-rarity-head th').allInnerTexts();
+  assert.deepEqual(heads, ['Rarity', '15 min', '30 min', '45 min', '60 min', '90 min']);
+  const common = await page.locator('#odds-rarity tr').first().locator('td').allInnerTexts();
+  assert.equal(common[0], 'Common');
+  assert.equal(common[2], '0%', 'no Common fish at 30 minutes');
+  await ctx.close();
+});
 await step('custom focus minutes: valid values apply and are remembered, bad ones are refused', async () => {
   const { ctx, page } = await open();
   await page.click('#cookies-allow');

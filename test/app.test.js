@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { RARITIES, rollFish, SIZES } from '../public/fish.js';
+import { guaranteedRarity, rarityOdds, RARITIES, rollFish, SIZES } from '../public/fish.js';
 import { DEFAULT_PREFS, FOCUS_MINUTES } from '../public/options.js';
 import { passwordProblem } from '../public/password.js';
 import { createApp, httpMailer, loadConfig, totpCode } from '../server.js';
@@ -650,7 +650,7 @@ test('odds tables add up exactly, and rolls match them over 1M fish', () => {
   const sizeCounts = {};
   const N = 1_000_000;
   for (let i = 0; i < N; i++) {
-    const fish = rollFish(crypto.randomInt);
+    const fish = rollFish(crypto.randomInt, 25);
     counts[fish.rarity] = (counts[fish.rarity] ?? 0) + 1;
     sizeCounts[fish.size] = (sizeCounts[fish.size] ?? 0) + 1;
     const size = SIZES.find((s) => s.id === fish.size);
@@ -662,6 +662,49 @@ test('odds tables add up exactly, and rolls match them over 1M fish', () => {
   };
   for (const r of RARITIES) close(counts[r.id], r.odds);
   for (const s of SIZES) close(sizeCounts[s.id], s.odds);
+});
+
+test('longer sessions improve the odds: guarantees at 30, 45 and 60 minutes, and rarer tiers keep rising', () => {
+  const ids = RARITIES.map((r) => r.id);
+  const chance = (minutes, id) => rarityOdds(minutes).find((r) => r.id === id).odds;
+  for (let minutes = 5; minutes <= 180; minutes++) {
+    const table = rarityOdds(minutes);
+    assert.equal(table.reduce((sum, r) => sum + r.odds, 0), 10000, `${minutes} adds up`);
+    assert.ok(table.every((r) => r.odds >= 0), `${minutes} has no negative odds`);
+    const floor = minutes >= 60 ? 'epic' : minutes >= 45 ? 'rare' : minutes >= 30 ? 'uncommon' : 'common';
+    for (const r of table) if (ids.indexOf(r.id) < ids.indexOf(floor)) assert.equal(r.odds, 0, `${minutes} can't give ${r.id}`);
+    assert.ok(chance(minutes, floor) > 0, `${minutes} can give ${floor}`);
+    if (minutes > 5) for (const id of ['gold', 'black', 'cosmic']) assert.ok(chance(minutes, id) >= chance(minutes - 1, id), `${id} never drops at ${minutes}`);
+  }
+  assert.deepEqual(RARITIES.map((r) => chance(25, r.id)), RARITIES.map((r) => r.odds), '25 minutes is the published baseline');
+  assert.deepEqual([29, 30, 44, 45, 59, 60].map(guaranteedRarity), [null, 'uncommon', 'uncommon', 'rare', 'rare', 'epic']);
+  assert.ok(chance(29, 'common') > 0);
+  assert.ok(chance(180, 'cosmic') > chance(60, 'cosmic') && chance(60, 'cosmic') > chance(30, 'cosmic'));
+  assert.ok(chance(60, 'gold') > chance(45, 'gold') && chance(45, 'gold') > chance(30, 'gold'));
+  // Rolls match the table for each length, over many fish.
+  for (const minutes of [15, 30, 45, 60, 120]) {
+    const counts = {};
+    const N = 200_000;
+    for (let i = 0; i < N; i++) { const f = rollFish(crypto.randomInt, minutes); counts[f.rarity] = (counts[f.rarity] ?? 0) + 1; }
+    for (const r of rarityOdds(minutes)) {
+      const p = r.odds / 10000;
+      if (p === 0) assert.equal(counts[r.id] ?? 0, 0, `${minutes}: no ${r.id}`);
+      else assert.ok(Math.abs((counts[r.id] ?? 0) / N - p) < 5 * Math.sqrt((p * (1 - p)) / N) + 1e-4, `${minutes}: ${r.id}`);
+    }
+  }
+});
+
+test('the server rolls with the real session length, and the guarantee holds through the API', async () => {
+  const cookie = await makeUser('guarantee@example.com');
+  const ids = RARITIES.map((r) => r.id);
+  for (const [minutes, floor] of [[30, 'uncommon'], [45, 'rare'], [60, 'epic'], [90, 'epic']]) {
+    for (let i = 0; i < 12; i++) {
+      await call('/api/focus/start', { body: { minutes }, cookie });
+      clock.now += minutes * 60_000;
+      const { data } = await call('/api/focus/complete', { body: { minutes: 180, rarity: 'cosmic' }, cookie });
+      assert.ok(ids.indexOf(data.fish.rarity) >= ids.indexOf(floor), `${minutes} min gave ${data.fish.rarity}`);
+    }
+  }
 });
 
 test('password rules catch weak choices and allow good ones', () => {

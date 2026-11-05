@@ -1,5 +1,5 @@
 import { api, createAccount } from './account.js';
-import { fishName, fishWeight, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPECIES } from './fish.js';
+import { fishName, fishWeight, guaranteedRarity, rarityOdds, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPECIES } from './fish.js';
 import { ANGLERS, cleanPrefs, FOCUS_MINUTES, isFocusLength, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
 import { drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
@@ -110,6 +110,14 @@ const format = (ms) => {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
 
+function perkText(minutes) {
+  const odds = rarityOdds(minutes);
+  const legendary = odds.slice(4).reduce((sum, r) => sum + r.odds, 0);
+  const floor = guaranteedRarity(minutes);
+  const start = floor ? `${minutes} minutes guarantees ${odds.find((r) => r.id === floor).name} or better.` : 'Focus for 30 minutes to guarantee Uncommon or better.';
+  return `${start} Chance of Legendary or rarer: ${legendary / 100}%.`;
+}
+
 function render() {
   const { mode } = S;
   const running = mode === 'focus' || mode === 'break';
@@ -122,6 +130,7 @@ function render() {
   const stop = $('#stop');
   stop.hidden = mode === 'idle' || mode === 'reeling' || mode === 'stuck';
   stop.textContent = mode === 'break' || mode === 'breakPaused' ? 'Skip break' : 'Give up';
+  $('#focus-perk').textContent = perkText(mode === 'idle' ? prefs.focus : S.minutes);
   $('#round').textContent = `Round ${S.round} of 4${minuteMs < 60000 ? ' (fast test timer)' : ''}`;
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.disabled = mode !== 'idle'; });
   $('#focus-custom').disabled = mode !== 'idle';
@@ -178,7 +187,7 @@ async function claim() {
     if (account.user()) {
       ({ fish } = await api('/api/focus/complete', {}));
     } else {
-      fish = rollFish((n) => Math.floor(Math.random() * n));
+      fish = rollFish((n) => Math.floor(Math.random() * n), S.minutes);
       guestFish.unshift({ ...fish, caught_at: Date.now() });
       if (allowsPrefs()) local.set(GUEST_FISH, JSON.stringify(guestFish));
     }
@@ -362,6 +371,7 @@ document.addEventListener('click', (event) => {
   if (opener) {
     const name = opener.dataset.open;
     if (name === 'tackle') openTackle();
+    if (name === 'guide') fillOdds();
     if (name === 'account') account.refresh();
     $(`#${name}`).showModal();
   }
@@ -464,7 +474,14 @@ addEventListener('pointerdown', unlockAudio, { once: true });
 // --- Guide (always shows the real table the game rolls from) ---
 const percent = (odds) => `${odds / 100}%`;
 const row = (...cells) => el('tr', {}, ...cells.map((text) => el('td', { textContent: text })));
-$('#odds-rarity').append(...RARITIES.map((r) => row(r.name, percent(r.odds))));
+function fillOdds() {
+  const lengths = [15, 30, 45, 60];
+  if (!lengths.includes(prefs.focus)) lengths.push(prefs.focus);
+  lengths.sort((a, b) => a - b);
+  const tables = lengths.map(rarityOdds);
+  $('#odds-rarity-head').replaceChildren(el('tr', {}, el('th', { scope: 'col', textContent: 'Rarity' }), ...lengths.map((m) => el('th', { scope: 'col', textContent: `${m} min` }))));
+  $('#odds-rarity').replaceChildren(...RARITIES.map((r, i) => row(r.name, ...tables.map((table) => percent(table[i].odds)))));
+}
 $('#odds-size').append(...SIZES.map((s) => row(s.name, percent(s.odds), `${s.min / 10}–${s.max / 10} lb`)));
 $('#odds-species').textContent = `${SPECIES.map((s) => s.name).join(', ')}. Each is equally likely.`;
 

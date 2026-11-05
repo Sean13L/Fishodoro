@@ -143,7 +143,7 @@ th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
 #tackle-list img { image-rendering: pixelated; justify-self: center; width: auto; height: 60px; max-width: 100%; object-fit: contain; }
 #tackle-list strong { line-height: 1.15; font-weight: 500; }
 #tackle-list time, #tackle-list .weight { font-size: 18px; }
-#notice { flex-basis: 100%; }
+#notice, #focus-perk { flex-basis: 100%; }
 #notice:empty { display: none; }
 
 #cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 5; padding: 12px 14px; max-width: 760px; margin: 0 auto; }

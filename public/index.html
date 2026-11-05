@@ -49,6 +49,7 @@
               <button class="btn" id="stop" hidden>Give up</button>
             </div>
             <p id="round">Round 1 of 4</p>
+            <p id="focus-perk"></p>
             <p id="notice" role="status"></p>
             <div class="sound">
               <label class="check"><input type="checkbox" id="sound-on"> Sound</label>
@@ -117,9 +118,9 @@
 
   <dialog id="guide" class="plate" aria-labelledby="guide-title">
     <div class="dialog-head"><h2 id="guide-title">Fishing Guide</h2><button class="btn" data-close>Close</button></div>
-    <p>Finish a focus session and you reel in one fish. Giving up means no fish. Every session has the same odds.</p>
+    <p>Finish a focus session and you reel in one fish. Giving up means no fish. The longer the session, the better your odds: 30 minutes guarantees at least Uncommon, 45 at least Rare and 60 at least Epic, and rarer fish keep getting likelier after that, up to 180 minutes.</p>
     <h3>Rarity</h3>
-    <table><thead><tr><th scope="col">Rarity</th><th scope="col">Chance</th></tr></thead><tbody id="odds-rarity"></tbody></table>
+    <table><thead id="odds-rarity-head"></thead><tbody id="odds-rarity"></tbody></table>
     <h3>Size</h3>
     <table><thead><tr><th scope="col">Size</th><th scope="col">Chance</th><th scope="col">Weight</th></tr></thead><tbody id="odds-size"></tbody></table>
     <h3>Species</h3>
