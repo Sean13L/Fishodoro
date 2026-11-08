@@ -16,6 +16,8 @@
 :root {
   --page: #5fb7e5; --plate: #fff4d6; --ink: #2b1d0e; --accent: #b93c08; --accent-ink: #fff; --edge: #2b1d0e; --focus: #0b4fd6;
   --pixel: 4px;
+  /* Chunky pixel corners made from four offset shadows. */
+  --pixel-edge: 0 calc(var(--pixel) * -1) 0 var(--edge), 0 var(--pixel) 0 var(--edge), calc(var(--pixel) * -1) 0 0 var(--edge), var(--pixel) 0 0 var(--edge);
 }
 
 * { box-sizing: border-box; }
@@ -43,11 +45,10 @@ a { color: inherit; }
 
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
-/* Chunky pixel corners made from four offset shadows. */
 .plate {
   background: var(--plate);
   color: var(--ink);
-  box-shadow: 0 calc(var(--pixel) * -1) 0 var(--edge), 0 var(--pixel) 0 var(--edge), calc(var(--pixel) * -1) 0 0 var(--edge), var(--pixel) 0 0 var(--edge);
+  box-shadow: var(--pixel-edge);
 }
 
 .btn {
@@ -155,6 +156,9 @@ th, td { text-align: left; padding: 5px 10px; border: 2px solid var(--edge); }
 #notice:empty { display: none; }
 
 #cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 5; padding: 12px 14px; max-width: 760px; margin: 0 auto; }
+
+/* --- Layout: scene with panel below. The scene gets the same pixel edge as the plates around it. --- */
+[data-layout="hero"] #stage { box-shadow: var(--pixel-edge); }
 
 /* --- Layout: full-screen world. Portrait, short and narrow screens keep the stacked layout so controls never cover the scene. --- */
 @media (min-aspect-ratio: 1/1) and (min-height: 640px) and (min-width: 900px) {
