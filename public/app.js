@@ -4,7 +4,7 @@ import { CATALOG, fishPrice, inSlot, RARITY_VALUE, SIZE_MULTIPLIER } from './mar
 import { ANGLERS, cleanPrefs, DEFAULT_PREFS, FOCUS_MINUTES, isFocusLength, keepOwned, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
 import { anglerImage, drawFish, FISH_H, FISH_W, fishImage, RARITY_COLORS, rarityIndexOf, rect } from './sprites.js';
-import { ADAPTIVE, PACKS, resolveSky, THEMES } from './themes.js';
+import { ADAPTIVE, hasTimes, PACKS, resolveSky, SKY_TIMES, THEMES } from './themes.js';
 import { createWorld } from './world.js';
 
 const $ = (s) => document.querySelector(s);
@@ -51,6 +51,8 @@ function applyPrefs() {
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.checked = Number(r.value) === prefs.focus; });
   $('#focus-custom').value = FOCUS_MINUTES.includes(prefs.focus) ? '' : prefs.focus;
   $('#pick-sky').value = prefs.sky;
+  $('#pick-sky-time').value = prefs.skyTime;
+  $('#sky-time-field').hidden = !hasTimes(prefs.sky);
   for (const slot of ['hat', 'face', 'rod']) $(`#pick-${slot}`).value = prefs[slot];
   for (const key of ['angler', 'scene', 'layout']) document.querySelectorAll(`input[name=${key}]`).forEach((r) => { r.checked = r.value === prefs[key]; });
   describeWorld();
@@ -79,7 +81,9 @@ function describeWorld() {
   const name = (list, id) => list.find(([key]) => key === id)[1];
   const allAnglers = [...ANGLERS, ...inSlot('angler').map((item) => [item.id, item.name])];
   const activity = { idle: 'waiting to cast', cast: 'casting a line', wait: 'watching the bobber', bite: 'feeling a bite', reel: 'reeling in a fish', reveal: 'holding up a fresh catch', break: 'taking a nap' }[world.state()];
-  $('#world').setAttribute('aria-label', `Pixel art: ${name(allAnglers, prefs.angler)} ${activity}. ${name(SCENES, prefs.scene)}, ${world.theme().name} sky.`);
+  const { name: sky, time } = world.theme();
+  const when = { dawn: ' at dawn', day: ' by day', sunset: ' in the evening', night: ' at night' }[time] ?? '';
+  $('#world').setAttribute('aria-label', `Pixel art: ${name(allAnglers, prefs.angler)} ${activity}. ${name(SCENES, prefs.scene)}, ${sky} sky${when}.`);
 }
 
 // --- Timer. Modes: idle, focus, paused, reeling, stuck (claim failed), break, breakPaused ---
@@ -297,7 +301,7 @@ function tick() {
   }
   render();
   // Adaptive and city skies change with the clock while the page stays open.
-  if (resolveSky(prefs.sky) !== world.theme()) {
+  if (resolveSky(prefs.sky, undefined, prefs.skyTime) !== world.theme()) {
     world.refreshSky();
     applyTheme();
     describeWorld();
@@ -594,6 +598,9 @@ for (const pack of PACKS) {
   skySelect.append(group);
 }
 skySelect.addEventListener('change', () => setPrefs({ sky: skySelect.value }));
+const skyTimeSelect = $('#pick-sky-time');
+skyTimeSelect.append(...SKY_TIMES.map(([id, label]) => new Option(label, id)));
+skyTimeSelect.addEventListener('change', () => setPrefs({ skyTime: skyTimeSelect.value }));
 
 document.querySelectorAll('input[name=focus]').forEach((r) => r.addEventListener('change', () => setPrefs({ focus: Number(r.value) })));
 $('#focus-custom').addEventListener('change', (e) => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RARITIES } from '../public/fish.js';
-import { ADAPTIVE, adaptiveId, CITY_PACK, resolveSky, SKY_IDS, THEMES } from '../public/themes.js';
+import { ADAPTIVE, adaptiveId, CITY_PACK, CLOCK, hasTimes, resolveSky, SKY_IDS, THEMES } from '../public/themes.js';
 
 const channel = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
 const luminance = (hex) => {
@@ -60,6 +60,21 @@ test('city skies follow the local hour through the whole day', () => {
   assert.notEqual(resolveSky('tokyo', 12), resolveSky('tokyo', 22));
   assert.equal(resolveSky('tokyo', 22).id, 'tokyo');
   assert.equal(resolveSky('tokyo', 3), resolveSky('tokyo', 23), 'the same look is the same object, so the page only repaints on a real change');
+});
+
+test('a city can stay at one time of day, whatever the clock says', async () => {
+  const { cleanPrefs } = await import('../public/options.js');
+  const tokyo = THEMES.find((x) => x.id === 'tokyo').times;
+  for (const time of ['dawn', 'day', 'sunset', 'night']) {
+    for (const hour of [0, 6, 12, 18, 23]) assert.equal(resolveSky('tokyo', hour, time), tokyo[time], `${time} at ${hour}:00`);
+    assert.equal(cleanPrefs({ skyTime: time }).skyTime, time);
+  }
+  assert.equal(resolveSky('tokyo', 12, CLOCK), tokyo.day);
+  assert.equal(resolveSky('tokyo', 22, CLOCK), tokyo.night);
+  assert.equal(resolveSky(ADAPTIVE, 12, 'night').id, 'day', 'Adaptive always follows the clock');
+  assert.equal(resolveSky('cosmic', 12, 'night').id, 'cosmic', 'skies without times of day ignore it');
+  assert.ok(hasTimes('tokyo') && !hasTimes('cosmic') && !hasTimes(ADAPTIVE));
+  for (const bad of ['noon', '', null, 7, '__proto__']) assert.equal(cleanPrefs({ skyTime: bad }).skyTime, CLOCK);
 });
 
 test('adaptive follows the local hour through the whole day', () => {
