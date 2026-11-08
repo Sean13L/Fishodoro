@@ -455,6 +455,13 @@ await step('a city sky changes with the clock, even while the page stays open', 
   await page.clock.fastForward(60 * 1000);
   await page.waitForFunction((before) => document.documentElement.style.getPropertyValue('--plate') !== before, afternoon, { timeout: 5000 });
   assert.equal(await plate(), '#2d1b3d', 'sunset colours at 5:00 pm, without a reload');
+  await page.click('[data-open=customize]');
+  assert.equal(await page.locator('#sky-time-field').isVisible(), true, 'a city offers a time of day');
+  await page.selectOption('#pick-sky-time', 'night');
+  assert.equal(await plate(), '#120a2e', 'Hong Kong night colours at 5:00 pm once the city is set to night');
+  assert.match(await page.locator('#world').getAttribute('aria-label'), /Hong Kong sky at night/);
+  await page.selectOption('#pick-sky', 'cosmic');
+  assert.equal(await page.locator('#sky-time-field').isVisible(), false, 'skies without times of day hide it');
   await ctx.close();
 });
 await step('session length shows its guarantee, and the Guide publishes odds for that length', async () => {

@@ -62,12 +62,142 @@ function campfire(c, x, y, t, lit) {
   rect(c, x, y - lick, 1, lick, '#ffe066');
 }
 
-// horizon: y of the waterline. seat(t): the angler's seat point. bobX: where the bobber lands.
+function blob(c, cx, cy, r, color) {
+  for (let y = -r; y <= r; y++) { const half = Math.round(Math.sqrt(r * r - y * y)); rect(c, cx - half, cy + y, half * 2 + 1, 1, color); }
+}
+
+// Bow on the left, so both sails stay behind the angler, who sits at the stern facing the bobber.
+function sailboat(c, th, t, s, state, p) {
+  const { y } = s;
+  for (let i = 0; i < 8; i++) {
+    const left = 22 + Math.round(i * i * 0.28);
+    rect(c, left, y + i, 106 - Math.floor(i * 0.9) - left, 1, i === 0 ? th.wood[0] : i === 3 ? p.band : i < 3 ? p.hull : p.hullShade);
+  }
+  rect(c, 19, y - 1, 5, 1, p.hull);
+  const mast = 50;
+  for (let j = 0; j < 44; j++) { const w = Math.round(j * 0.5); rect(c, mast - w, y - 50 + j, w, 1, j % 11 === 10 ? p.sailShade : p.sail); } // Jib
+  for (let j = 0; j < 42; j++) rect(c, mast + 2, y - 50 + j, Math.round(j * 0.45), 1, j % 10 === 9 ? p.sailShade : p.sail); // Mainsail
+  rect(c, mast, y - 54, 2, 54, th.wood[1]);
+  rect(c, mast + 2, y - 8, 20, 1, th.wood[1]); // Boom
+  for (let i = 0; i < 6; i++) rect(c, mast + 2 + i, y - 55 + (still() ? 0 : Math.round(Math.sin(t * 7 - i * 0.8) * (i / 5))), 1, i < 4 ? 2 : 1, '#e53935');
+}
+
+// Wheelhouse at the back, angler on the low foredeck, smoke drifting off the stack.
+function tugboat(c, th, t, s, state, p) {
+  const { y } = s;
+  for (let i = 0; i < 10; i++) {
+    const left = 12 + Math.floor(i * 0.6);
+    rect(c, left, y + i, 116 - Math.round(i * i * 0.16) - left, 1, i === 0 ? th.wood[0] : i < 5 ? p.red : i === 5 ? p.black : p.hullShade);
+  }
+  rect(c, 104, y - 3, 13, 3, p.red); rect(c, 104, y - 3, 13, 1, th.wood[0]); // Raised bow
+  for (const x of [22, 42, 62, 82]) { rect(c, x, y + 2, 4, 4, '#1a1c2c'); rect(c, x + 1, y + 3, 2, 2, p.hullShade); } // Tyre fenders
+  rect(c, 20, y - 9, 48, 9, p.hull); rect(c, 20, y - 10, 48, 1, th.wood[1]);
+  for (const x of [25, 35, 45]) rect(c, x, y - 6, 3, 3, p.glass);
+  rect(c, 61, y - 8, 5, 5, '#ff6a2a'); rect(c, 62, y - 7, 3, 3, p.hull); // Life ring
+  rect(c, 28, y - 24, 30, 14, p.hull); rect(c, 26, y - 26, 34, 2, th.wood[1]);
+  for (const x of [31, 39, 47]) rect(c, x, y - 21, 6, 5, p.glass);
+  rect(c, 52, y - 34, 1, 8, th.wood[1]);
+  const sweep = still() ? 4 : Math.round(Math.abs(Math.cos(t * 2)) * 4);
+  rect(c, 52 - sweep, y - 35, sweep * 2 + 1, 1, p.black); // Radar
+  rect(c, 36, y - 40, 8, 14, p.black); rect(c, 36, y - 38, 8, 3, p.red);
+  for (let i = 0; i < 6; i++) {
+    const life = still() ? i / 6 : (t * 0.3 + i / 6) % 1;
+    c.globalAlpha = 0.75 * (1 - life);
+    blob(c, 40 - life * 26, y - 43 - life * 28, Math.round(1 + life * 4), p.smoke);
+  }
+  c.globalAlpha = 1;
+}
+
+// A lashed log raft, with a lantern that lights up the water after dark.
+function raft(c, th, t, s, state, p) {
+  const { y } = s;
+  const [top, side] = th.wood;
+  if (p.dark) {
+    const pulse = still() ? 0 : Math.sin(t * 9) * 0.03;
+    c.globalAlpha = 0.12 + pulse; blob(c, 42, y - 21, 12, '#ffb04a');
+    c.globalAlpha = 0.22 + pulse; blob(c, 42, y - 21, 6, '#ffb04a');
+    c.globalAlpha = 0.4; for (let i = 0; i < 4; i++) rect(c, 41 - i, y + 9 + i * 2, 3 + i * 2, 1, '#ffb04a'); // Reflection
+    c.globalAlpha = 1;
+  }
+  rect(c, 30, y, 74, 2, top);
+  for (let x = 33; x < 104; x += 7) rect(c, x, y, 1, 2, side);
+  for (let i = 0; i < 6; i++) { const inset = i === 0 || i === 5 ? 1 : 0; rect(c, 28 + inset, y + 2 + i, 78 - inset * 2, 1, i < 2 ? top : side); }
+  for (let x = 36; x < 104; x += 9) rect(c, x, y + 4 + (x % 2), 4, 1, p.bark);
+  rect(c, 105, y + 3, 3, 4, p.endGrain); rect(c, 106, y + 4, 1, 2, side);
+  for (const x of [42, 70, 96]) rect(c, x, y + 1, 2, 7, p.rope);
+  rect(c, 36, y - 28, 2, 28, side); rect(c, 36, y - 28, 8, 1, side); rect(c, 42, y - 27, 1, 2, '#1a1c2c');
+  rect(c, 40, y - 25, 5, 7, '#1a1c2c');
+  const flick = still() ? 0 : Math.max(0, Math.round(Math.sin(t * 11) + Math.sin(t * 7.3)));
+  rect(c, 41, y - 24, 3, 5, '#ff8c2a');
+  rect(c, 42, y - 23 + flick, 1, 3 - flick, '#ffe066');
+  rect(c, 50, y - 6, 7, 6, p.bucket); rect(c, 50, y - 6, 7, 1, '#1a1c2c'); rect(c, 51, y - 3, 5, 1, p.bucketShade);
+}
+
+const lighthouseRock = (x, horizon) => {
+  if (x < 46) return horizon - 4 + Math.round(Math.sin(x * 0.4) * 1.2);
+  if (x < 60) return horizon - 4 + Math.round(((x - 46) * 10) / 14);
+  if (x < 100) return horizon + 6 + (x % 9 === 0 ? -1 : 0);
+  return horizon + 6 + Math.round((x - 100) * 0.9);
+};
+
+function lighthouse(g, th, horizon, p) {
+  for (let x = 0; x < 118; x++) {
+    const top = lighthouseRock(x, horizon);
+    rect(g, x, top, 1, H - top, p.rock);
+    rect(g, x, top, 1, 2, p.rockLight);
+    for (let y = top + 3; y < H; y += 3) if (rand(x, y) < 0.18) rect(g, x, y, 2, 1, p.rockDark);
+  }
+  const base = horizon - 4, top = 24;
+  for (let y = top; y < base; y++) {
+    const half = Math.round(6 + ((y - top) / (base - top)) * 5);
+    rect(g, 23 - half, y, half * 2 + 1, 1, Math.floor((y - top) / 8) % 2 ? p.band : p.hull);
+    rect(g, 23 + half - 1, y, 2, 1, p.towerShade);
+  }
+  for (const y of [40, 58]) rect(g, 22, y, 3, 4, p.glass);
+  rect(g, 21, base - 8, 5, 8, '#1a1c2c');
+  rect(g, 18, 12, 11, 8, p.glass);
+  for (const x of [18, 23, 28]) rect(g, x, 12, 1, 8, '#1a1c2c');
+  rect(g, 14, 20, 19, 1, '#1a1c2c'); rect(g, 13, 22, 21, 2, '#1a1c2c');
+  for (let x = 14; x < 33; x += 3) rect(g, x, 20, 1, 2, '#1a1c2c');
+  for (let i = 0; i < 7; i++) rect(g, 23 - i, 5 + i, i * 2 + 1, 1, p.roof);
+  rect(g, 23, 3, 1, 2, '#1a1c2c');
+}
+
+// After dark the lamp sweeps a beam across the sky. Waves break on the rocks either way.
+function lighthouseFront(c, th, t, s, state, p) {
+  if (p.dark) {
+    const phase = t * 0.8;
+    const reach = Math.cos(phase);
+    const dir = reach < 0 ? -1 : 1;
+    const length = Math.abs(reach) * 160;
+    for (let d = 4; d < length; d++) {
+      const half = 1 + Math.floor(d * 0.07);
+      c.globalAlpha = 0.4 * (1 - d / 170);
+      rect(c, 23 + dir * d, 16 - half, 1, half * 2 + 1, '#ffeaa0');
+    }
+    c.globalAlpha = Math.sin(phase) > 0.85 ? 0.5 : 0;
+    blob(c, 23, 16, 6, '#fff3b0');
+    c.globalAlpha = 1;
+  }
+  if (still()) return;
+  const cycle = t / 3.2;
+  const n = Math.floor(cycle);
+  const k = (cycle - n) / 0.6;
+  if (k > 1) return;
+  for (let i = 0; i < 14; i++) {
+    const vx = (rand(i, n) - 0.35) * 20 * p.sea;
+    const vy = (14 + rand(i, n + 1) * 14) * p.sea;
+    rect(c, 106 + vx * k, s.y + 4 - vy * k + 28 * k * k, 1, 1, i % 3 ? p.foam : '#ffffff');
+  }
+}
+
+// horizon: y of the waterline. seat(t, sea): the angler's seat point, rocking harder on rough water. bobX: where the bobber lands.
+const rock = (t, speed, amount, sea) => (still() ? 0 : Math.round(Math.sin(t * speed) * amount * sea));
 const SCENES = {
   dock: { horizon: 78, hills: true, bobX: 176, seat: () => ({ x: 72, y: 88 }), still: dock },
   boat: {
     horizon: 72, hills: false, bobX: 182,
-    seat: (t) => ({ x: 60, y: 98 + (still() ? 0 : Math.round(Math.sin(t * 1.4) * 1.5)) }),
+    seat: (t, sea) => ({ x: 60, y: 98 + rock(t, 1.4, 1.5, sea) }),
     front: (c, th, t, s) => boat(c, th, 46, s.y, 0),
   },
   river: {
@@ -76,10 +206,41 @@ const SCENES = {
   },
   island: {
     horizon: 108, hills: false, bobX: 170,
-    seat: (t) => ({ x: 48, y: 72 + (still() ? 0 : Math.round(Math.sin(t * 0.9) * 1.5)) }),
+    seat: (t) => ({ x: 48, y: 72 + rock(t, 0.9, 1.5, 1) }),
     front: (c, th, t, s) => island(c, th, 14, s.y),
   },
+  sailboat: { horizon: 70, hills: false, bobX: 184, seat: (t, sea) => ({ x: 74, y: 96 + rock(t, 1.1, 2, sea) }), front: sailboat },
+  tugboat: { horizon: 74, hills: false, bobX: 192, seat: (t, sea) => ({ x: 86, y: 100 + rock(t, 0.8, 1.2, sea) }), front: tugboat },
+  raft: { horizon: 76, hills: false, bobX: 180, seat: (t, sea) => ({ x: 62, y: 94 + rock(t, 1.7, 1.5, sea) }), front: raft },
+  lighthouse: { horizon: 80, hills: false, bobX: 186, waterFrom: 100, seat: () => ({ x: 72, y: 86 }), still: lighthouse, front: lighthouseFront },
 };
+
+const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const mix = (a, b, k) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b)[i] - v) * k).toString(16).padStart(2, '0')).join('')}`;
+const brightness = (hex) => { const [r, g, b] = hexRgb(hex); return r * 0.3 + g * 0.59 + b * 0.11; };
+
+// Colours for boats, rocks and water effects, worked out once per sky. Painted things take on a little of the sky's colour.
+function scenePalette(th) {
+  const tint = (hex, k = 0.3) => mix(hex, th.sky[1], k);
+  const fx = th.fx;
+  return {
+    dark: brightness(th.sky[0]) < 70,
+    rainy: fx.includes('rain'),
+    sea: fx.includes('lightning') ? 2 : fx.includes('rain') ? 1.5 : fx.includes('fog') || fx.includes('snow') ? 0.6 : 1,
+    foam: mix(th.water[0], '#ffffff', 0.5),
+    crestShade: mix(th.water[th.water.length - 1], '#000000', 0.15),
+    deep: mix(th.water[th.water.length - 1], '#000000', 0.4),
+    leaper: mix(th.water[th.water.length - 1], '#000000', 0.5),
+    sail: tint('#f4efe2', 0.25), sailShade: tint('#d4ccb8'),
+    hull: tint('#ece8de'), hullShade: tint('#8f8a80'), towerShade: tint('#9c978c'),
+    band: tint('#c0392b', 0.25), red: tint('#b8322a', 0.25), black: tint('#26262e', 0.2), roof: tint('#7a1f1f', 0.2),
+    glass: brightness(th.sky[0]) < 70 ? '#ffe9a8' : tint('#a8d8f0', 0.2),
+    smoke: tint('#c9c9c9'),
+    rock: tint('#6b6d75'), rockLight: tint('#8d8f96'), rockDark: tint('#45474e'),
+    bark: mix(th.wood[1], '#000000', 0.25), endGrain: mix(th.wood[0], '#ffe9b0', 0.4), rope: tint('#e3d3a0'),
+    bucket: tint('#8f9aa6'), bucketShade: tint('#6c7682'),
+  };
+}
 
 function paintSky(g, th, horizon) {
   const bands = th.sky.length;
@@ -136,7 +297,7 @@ function paintBackground(g, th, scene) {
 }
 
 // In front of stars and clouds, so a star never shines through a hill or a building. Returns blinking tower lights.
-function paintScenery(g, th, scene) {
+function paintScenery(g, th, scene, pal) {
   const { horizon } = scene;
   g.clearRect(0, 0, W, H);
   const beacons = th.city ? drawCity(g, th, horizon) : [];
@@ -148,7 +309,7 @@ function paintScenery(g, th, scene) {
       rect(g, x, horizon - near, 1, near, th.hill[0]);
     }
   }
-  scene.still?.(g, th, horizon);
+  scene.still?.(g, th, horizon, pal);
   return beacons;
 }
 
@@ -292,17 +453,129 @@ export function createWorld(canvas) {
   let beacons = [];
   c.imageSmoothingEnabled = false;
   let hat = 'none', face = 'none', rod = 'none';
-  let angler = 'cat', scene = SCENES.dock, sceneId = 'dock', skyId = 'adaptive', theme = null;
+  let angler = 'cat', scene = SCENES.dock, sceneId = 'dock', skyId = 'adaptive', skyTime = 'clock', theme = null, pal = null;
   let state = 'idle', since = 0, fish = null, playedSplash = true;
 
   function repaint() {
-    theme = resolveSky(skyId);
+    theme = resolveSky(skyId, undefined, skyTime);
+    pal = scenePalette(theme);
     paintBackground(bgc, theme, scene);
-    beacons = paintScenery(sceneryC, theme, scene);
+    beacons = paintScenery(sceneryC, theme, scene, pal);
+  }
+
+  // Sets the colour once for a whole batch of single pixels, given as flat [x, y, x, y, ...] pairs.
+  const plot = (points, color) => { c.fillStyle = color; for (let i = 0; i < points.length; i += 2) c.fillRect(points[i], points[i + 1], 1, 1); };
+  const ring = (cx, cy, r, color) => {
+    const points = [];
+    const steps = Math.max(8, Math.round(r * 4));
+    for (let i = 0; i < steps; i++) { const a = (i / steps) * Math.PI * 2; points.push(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r * 0.35)); }
+    plot(points, color);
+  };
+
+  // A point on open water, clear of the boats on the left and of the bobber, with room for something `margin` wide.
+  function openSpot(seed, margin) {
+    const zones = [[116 + margin, scene.bobX - 18 - margin], [scene.bobX + 18 + margin, W - margin]].filter(([a, b]) => b > a);
+    let k = rand(seed, 61) * zones.reduce((n, [a, b]) => n + b - a, 0);
+    for (const [a, b] of zones) { if (k < b - a) return a + k; k -= b - a; }
+    return W - margin;
+  }
+
+  // Rows of wave crests, closer together and smaller toward the horizon, rolling in alternate directions.
+  function drawSwell(t, th) {
+    const { horizon } = scene;
+    const depth = H - horizon;
+    const rows = Math.max(3, Math.round(depth / 8));
+    const from = scene.waterFrom ?? 0;
+    for (let r = 0; r < rows; r++) {
+      const k = (r + 0.5) / rows;
+      const y = Math.round(horizon + 3 + k ** 1.5 * (depth - 6));
+      const length = 12 + k * 30;
+      const height = (0.6 + k * 1.6) * pal.sea;
+      const drift = rand(r, 51) * 300 + t * (3 + k * 9) * (r % 2 ? 1 : -0.7);
+      const crest = [], cap = [], shade = [];
+      for (let x = from; x < W; x++) {
+        const s = Math.sin(((x + drift) / length) * Math.PI * 2 + Math.sin(x * 0.023 + r * 1.7 + t * 0.35) * 1.4);
+        if (s < 0.45) continue;
+        const top = y - Math.round(((s - 0.45) / 0.55) * height);
+        (s > 0.93 ? cap : crest).push(x, top);
+        if (k > 0.4) shade.push(x, top + 1);
+      }
+      plot(shade, pal.crestShade); plot(crest, th.water[0]); plot(cap, pal.foam);
+    }
+  }
+
+  // Rings spreading where something touched the water. Rain makes many small ones.
+  function drawRipples(t) {
+    const { horizon } = scene;
+    const from = scene.waterFrom ?? 0;
+    const count = pal.rainy ? 16 : 4;
+    for (let i = 0; i < count; i++) {
+      const cycle = t / (1.6 + rand(i, 41) * 2.4) + rand(i, 42);
+      const n = Math.floor(cycle);
+      const life = cycle - n;
+      c.globalAlpha = 0.7 * (1 - life);
+      ring(from + rand(i * 31 + n, 43) * (W - from), horizon + 3 + rand(i * 17 + n, 44) * (H - horizon - 6), 1 + life * (pal.rainy ? 4 : 7), pal.foam);
+    }
+    c.globalAlpha = 1;
+  }
+
+  // Now and then a fish leaps clear of the water, leaving a ring where it left and where it landed.
+  function drawLeaper(t) {
+    const n = Math.floor(t / 7);
+    const age = t - n * 7;
+    if (rand(n, 71) < 0.4 || age > 2.8) return;
+    const { horizon } = scene;
+    const dir = rand(n, 72) < 0.5 ? -1 : 1;
+    const hop = 14 + rand(n, 74) * 8;
+    const x0 = openSpot(n, 4) - (dir * hop) / 2;
+    const y0 = Math.round(horizon + 5 + rand(n, 73) * (H - horizon) * 0.35);
+    for (const [x, start] of [[x0, 0], [x0 + dir * hop, 1]]) {
+      const life = (age - start) / 1.6;
+      if (life < 0 || life > 1) continue;
+      c.globalAlpha = 0.8 * (1 - life);
+      ring(x, y0 + 1, 2 + life * 6, pal.foam);
+      c.globalAlpha = 1;
+    }
+    if (age > 1) return;
+    const x = Math.round(x0 + dir * hop * age);
+    const y = Math.round(y0 - Math.sin(age * Math.PI) * (10 + hop * 0.3));
+    const tilt = Math.cos(age * Math.PI) * 1.5;
+    for (let j = -3; j <= 2; j++) rect(c, x + dir * j, y - Math.round((tilt * j) / 3), 1, 2, pal.leaper);
+    rect(c, x - dir * 4, y + Math.round((tilt * 4) / 3) - 1, 1, 4, pal.leaper);
+    if (age < 0.2 || age > 0.8) {
+      const at = age < 0.2 ? x0 : x0 + dir * hop;
+      const k = age < 0.2 ? age / 0.2 : (age - 0.8) / 0.2;
+      for (let i = 0; i < 5; i++) rect(c, at + (i - 2) * (1 + k * 2), y0 - Math.sin(k * Math.PI) * (3 + (i % 2) * 3), 1, 1, pal.foam);
+    }
+  }
+
+  // A whirlpool opens every 40 seconds, spins for a while, then closes again.
+  function drawWhirlpool(t, th) {
+    const n = Math.floor(t / 40);
+    const age = t - n * 40 - 5;
+    if (age < 0 || age > 15) return;
+    const grow = Math.min(1, age / 2.5, (15 - age) / 2.5);
+    const { horizon } = scene;
+    const r = Math.min(13, (H - horizon) * 0.4) * grow;
+    const x = openSpot(n + 500, 13);
+    const y = Math.round(horizon + (H - horizon) * 0.55);
+    const ry = Math.max(1, Math.round(r * 0.15));
+    c.globalAlpha = 0.55 * grow;
+    for (let dy = -ry; dy <= ry; dy++) { const half = Math.round(r * 0.45 * Math.sqrt(1 - (dy / ry) ** 2)); rect(c, x - half, y + dy, half * 2 + 1, 1, pal.deep); }
+    c.globalAlpha = 1;
+    for (let arm = 0; arm < 3; arm++) {
+      const points = [];
+      for (let k = 0.12; k <= 1; k += 0.025) {
+        const a = arm * 2.094 + k * 5.5 - t * 2.4;
+        points.push(Math.round(x + Math.cos(a) * r * k), Math.round(y + Math.sin(a) * r * k * 0.38));
+      }
+      plot(points, arm ? th.water[0] : pal.foam);
+    }
   }
 
   function drawWater(t, th) {
     const { horizon } = scene;
+    drawSwell(t, th);
     for (let i = 0; i < 14; i++) {
       const y = horizon + 2 + rand(i, 1) * (H - horizon - 4);
       const from = scene.waterFrom ?? 0;
@@ -318,6 +591,12 @@ export function createWorld(canvas) {
     if (th.cele) {
       const cx = th.cele.x;
       for (let y = horizon + 2; y < H - 4; y += 4) rect(c, cx - 4 + Math.round(Math.sin(t * 2 + y) * 2), y, 8 - (y % 3), 1, th.cele.color);
+    }
+    // Motion only: with reduced motion the water keeps its still wave crests and nothing else.
+    if (!still()) {
+      drawRipples(t);
+      drawWhirlpool(t, th);
+      drawLeaper(t);
     }
     if (state === 'wait' || state === 'bite' || state === 'cast') {
       c.globalAlpha = 0.35;
@@ -434,8 +713,8 @@ export function createWorld(canvas) {
     if (still() || Math.sin(t * 2.5) > 0) for (const [x, y] of beacons) rect(c, x, y - 1, 1, 1, '#ff3b30');
     for (const name of th.fx) if (WEATHER.has(name)) FX[name]?.(c, th, t, horizon);
 
-    const seat = scene.seat(t);
-    scene.front?.(c, th, t, seat, state);
+    const seat = scene.seat(t, pal.sea);
+    scene.front?.(c, th, t, seat, state, pal);
     const eyesClosed = state === 'break' || (!still() && t % 4 < 0.14);
     const pose = drawAngler(c, angler, seat.x, seat.y, { eyesClosed, t, hat, face });
     const tip = drawRodAndLine(pose, t, age, seat);
@@ -468,10 +747,10 @@ export function createWorld(canvas) {
   requestAnimationFrame(frame);
 
   return {
-    configure({ angler: a, scene: s, sky, hat: h, face: f, rod: r }) {
+    configure({ angler: a, scene: s, sky, skyTime: time, hat: h, face: f, rod: r }) {
       angler = a; hat = h; face = f; rod = r;
-      if (s !== sceneId || sky !== skyId) {
-        sceneId = s; skyId = sky; scene = SCENES[s] ?? SCENES.dock;
+      if (s !== sceneId || sky !== skyId || time !== skyTime) {
+        sceneId = s; skyId = sky; skyTime = time; scene = SCENES[s] ?? SCENES.dock;
         repaint();
       }
     },

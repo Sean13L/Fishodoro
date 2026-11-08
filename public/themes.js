@@ -29,7 +29,7 @@ const LAND = {
 const T = (id, name, pack, ui, base, sky, water, cele, fx, extra = {}) =>
   ({ id, name, pack, ui: UI[ui], ...LAND[base], sky, water, cele, fx, ...extra });
 
-export const CITY_PACK = 'Cities (follow your clock)';
+export const CITY_PACK = 'Cities';
 
 // What a city looks like at each time of day, unless that city has its own look for that time.
 const CITY_TIMES = {
@@ -43,7 +43,7 @@ const city = (id, name, own = {}, alwaysFx = []) => {
   const times = {};
   for (const time of Object.keys(CITY_TIMES)) {
     const { ui, land, sky, water, cele, fx, ...extra } = { ...CITY_TIMES[time], ...own[time] };
-    times[time] = T(id, name, CITY_PACK, ui, land, sky, water, cele, [...fx, ...alwaysFx], { ...extra, city: id });
+    times[time] = T(id, name, CITY_PACK, ui, land, sky, water, cele, [...fx, ...alwaysFx], { ...extra, city: id, time });
   }
   return { ...times.day, times };
 };
@@ -107,7 +107,12 @@ export function adaptiveId(hour) {
   return 'night';
 }
 
-export function resolveSky(id, hour = new Date().getHours()) {
+// A city can follow the clock or stay at one time of day. Adaptive always follows the clock.
+export const CLOCK = 'clock';
+export const SKY_TIMES = [[CLOCK, "Follow your device's clock"], ['dawn', 'Dawn'], ['day', 'Day'], ['sunset', 'Evening'], ['night', 'Night']];
+export const hasTimes = (id) => !!THEMES.find((t) => t.id === id)?.times;
+
+export function resolveSky(id, hour = new Date().getHours(), time = CLOCK) {
   const theme = THEMES.find((t) => t.id === (id === ADAPTIVE ? adaptiveId(hour) : id)) ?? THEMES[1];
-  return theme.times?.[adaptiveId(hour)] ?? theme;
+  return theme.times?.[theme.times[time] ? time : adaptiveId(hour)] ?? theme;
 }
