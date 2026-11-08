@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import qrcode from 'qrcode-generator';
-import { RARITIES, rollFish } from './public/fish.js';
+import { nextRound, RARITIES, rollFish, roundAt } from './public/fish.js';
 import { catalogItem, fishPrice } from './public/market.js';
 import { cleanPrefs, isFocusLength, keepOwned, MAX_FOCUS, MIN_FOCUS } from './public/options.js';
 import { MAX_PASSWORD, passwordProblem } from './public/password.js';
@@ -253,15 +253,19 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
     await clearAttempts(`reauth:${user.id}`);
   }
 
+  // The round decides the odds, so the server keeps it: { round, at } of the last catch, or undefined.
+  const lastRound = (userId) => db.get('SELECT round, at FROM rounds WHERE user_id = ?', userId);
+
   async function activeFocus(userId) {
-    const row = await db.get('SELECT minutes, started_at FROM focus WHERE user_id = ?', userId);
+    const row = await db.get('SELECT f.minutes, f.started_at, r.round, r.at FROM focus f LEFT JOIN rounds r ON r.user_id = f.user_id WHERE f.user_id = ?', userId);
     if (!row) return null;
     const duration = row.minutes * minuteMs;
     if (row.started_at + duration + CLAIM_WINDOW_MS < now()) {
       await db.run('DELETE FROM focus WHERE user_id = ?', userId);
       return null;
     }
-    return { minutes: row.minutes, startedAt: row.started_at, remainingMs: Math.max(0, row.started_at + duration - now()) };
+    const round = roundAt(row.round == null ? null : { round: row.round, at: row.at }, row.started_at);
+    return { minutes: row.minutes, startedAt: row.started_at, round, remainingMs: Math.max(0, row.started_at + duration - now()) };
   }
 
   const coinsOf = async (userId) => (await db.get('SELECT coins FROM wallets WHERE user_id = ?', userId))?.coins ?? 0;
@@ -434,7 +438,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       return { prefs };
     },
 
-    'GET /api/focus/active': async ({ user }) => ({ active: await activeFocus(user.id) }),
+    'GET /api/focus/active': async ({ user }) => ({ active: await activeFocus(user.id), last: (await lastRound(user.id)) ?? null }),
 
     'POST /api/focus/start': async ({ body, user }) => {
       if (!isFocusLength(body.minutes)) fail(400, `Pick a whole number of minutes from ${MIN_FOCUS} to ${MAX_FOCUS}.`);
@@ -454,15 +458,18 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
       const active = await activeFocus(user.id);
       if (!active) fail(404, 'There is no focus session to reel in.');
       if (active.remainingMs > 0) fail(409, 'That session is not finished yet.', { retryAfterMs: active.remainingMs });
-      const fish = rollFish(crypto.randomInt, active.minutes);
-      // One transaction: only the request whose DELETE removed the session gets a fish.
+      const fish = rollFish(crypto.randomInt, active.minutes, active.round);
+      const last = { round: nextRound(active.round), at: now() };
+      // One transaction: only the request whose DELETE removed the session gets a fish and moves the round on.
       const [, inserted] = await db.batch([
         ['DELETE FROM focus WHERE user_id = ? AND started_at = ?', user.id, active.startedAt],
         ['INSERT INTO catches (user_id, species, rarity, size, weight, caught_at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1',
-          user.id, fish.species, fish.rarity, fish.size, fish.weight, now()],
+          user.id, fish.species, fish.rarity, fish.size, fish.weight, last.at],
+        ['INSERT INTO rounds (user_id, round, at) SELECT ?, ?, ? WHERE changes() = 1 ON CONFLICT(user_id) DO UPDATE SET round = excluded.round, at = excluded.at',
+          user.id, last.round, last.at],
       ]);
       if (!inserted.rowsAffected) fail(404, 'There is no focus session to reel in.');
-      return { fish };
+      return { fish, round: active.round, last };
     },
 
     'GET /api/catches': async ({ url, user }) => {
@@ -511,7 +518,7 @@ export function createApp({ config, db, now = Date.now, mail = httpMailer(config
     'GET /api/export': async ({ user, res }) => {
       res.setHeader('Content-Disposition', 'attachment; filename="fishodoro-data.json"');
       return {
-        account: { email: user.email, createdAt: user.created_at, consentVersion: user.consent_version, consentAt: user.consent_at, twoFactor: !!user.totp_enabled, prefs: JSON.parse(user.prefs), coins: await coinsOf(user.id), unlocks: await unlocksOf(user.id) },
+        account: { email: user.email, createdAt: user.created_at, consentVersion: user.consent_version, consentAt: user.consent_at, twoFactor: !!user.totp_enabled, prefs: JSON.parse(user.prefs), coins: await coinsOf(user.id), unlocks: await unlocksOf(user.id), round: (await lastRound(user.id)) ?? null },
         catches: await db.all('SELECT species, rarity, size, weight, caught_at FROM catches WHERE user_id = ? ORDER BY id', user.id),
       };
     },

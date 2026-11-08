@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { guaranteedRarity, rarityOdds, RARITIES, rollFish, SIZES } from '../public/fish.js';
+import { guaranteedRarity, nextRound, rarityOdds, RARITIES, rollFish, ROUND_GAP_MS, roundAt, SIZES } from '../public/fish.js';
 import { CATALOG, fishPrice, RARITY_VALUE, SIZE_MULTIPLIER } from '../public/market.js';
 import { DEFAULT_PREFS, FOCUS_MINUTES } from '../public/options.js';
 import { hasSprite } from '../public/sprites.js';
@@ -57,7 +57,7 @@ before(async () => {
 });
 after(() => { server.close(); db.close(); });
 beforeEach(() => {
-  for (const table of ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks', 'users', 'attempts']) db.run(`DELETE FROM ${table}`);
+  for (const table of ['focus', 'rounds', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks', 'users', 'attempts']) db.run(`DELETE FROM ${table}`);
   mails.length = 0;
 });
 
@@ -696,6 +696,72 @@ test('longer sessions improve the odds: guarantees at 30, 45 and 60 minutes, and
       else assert.ok(Math.abs((counts[r.id] ?? 0) / N - p) < 5 * Math.sqrt((p * (1 - p)) / N) + 1e-4, `${minutes}: ${r.id}`);
     }
   }
+});
+
+test('each round doubles Epic and rarer, and the table never overflows', () => {
+  const ids = RARITIES.map((r) => r.id);
+  const epicUp = (minutes, round) => rarityOdds(minutes, round).slice(ids.indexOf('epic')).reduce((sum, r) => sum + r.odds, 0);
+  assert.deepEqual([1, 2, 3].map((round) => epicUp(25, round)), [800, 1600, 3200], '25 minutes doubles exactly until the cap');
+  for (let minutes = 5; minutes <= 180; minutes++) {
+    assert.deepEqual(rarityOdds(minutes, 1), rarityOdds(minutes), `${minutes}: round 1 is the normal table`);
+    const floor = guaranteedRarity(minutes) ?? 'common';
+    for (const round of [1, 2, 3, 4]) {
+      const table = rarityOdds(minutes, round);
+      assert.equal(table.reduce((sum, r) => sum + r.odds, 0), 10000, `${minutes}/${round} adds up`);
+      assert.ok(table.every((r) => r.odds >= 0), `${minutes}/${round} has no negative odds`);
+      assert.ok(table.find((r) => r.id === floor).odds >= 1000, `${minutes}/${round} keeps 10% for ${floor}`);
+      for (const r of table) if (ids.indexOf(r.id) < ids.indexOf(floor)) assert.equal(r.odds, 0, `${minutes}/${round} can't give ${r.id}`);
+      if (round > 1) assert.ok(epicUp(minutes, round) >= epicUp(minutes, round - 1), `${minutes}: round ${round} is never worse`);
+      if (minutes > 5) for (const id of ['gold', 'black', 'cosmic']) {
+        const chance = (m) => rarityOdds(m, round).find((r) => r.id === id).odds;
+        assert.ok(chance(minutes) >= chance(minutes - 1), `${id} never drops at ${minutes} in round ${round}`);
+      }
+    }
+  }
+  // Rolls match the boosted table.
+  const counts = {};
+  const N = 200_000;
+  for (let i = 0; i < N; i++) { const f = rollFish(crypto.randomInt, 25, 4); counts[f.rarity] = (counts[f.rarity] ?? 0) + 1; }
+  for (const r of rarityOdds(25, 4)) {
+    const p = r.odds / 10000;
+    assert.ok(Math.abs((counts[r.id] ?? 0) / N - p) < 5 * Math.sqrt((p * (1 - p)) / N) + 1e-4, `round 4: ${r.id}`);
+  }
+  assert.deepEqual([1, 2, 3, 4].map(nextRound), [2, 3, 4, 1]);
+  assert.equal(roundAt(null, 0), 1);
+  assert.equal(roundAt({ round: 3, at: 0 }, ROUND_GAP_MS), 3);
+  assert.equal(roundAt({ round: 3, at: 0 }, ROUND_GAP_MS + 1), 1);
+});
+
+test('the server keeps the round: it advances per catch, survives give-ups, resets after an hour, and the client cannot pick it', async () => {
+  const cookie = await makeUser('rounds@example.com');
+  const fish = async (expectRound) => {
+    const { data } = await call('/api/focus/start', { body: { minutes: 15 }, cookie });
+    assert.equal(data.active.round, expectRound);
+    assert.equal((await call('/api/focus/active', { cookie })).data.active.round, expectRound);
+    clock.now += 15 * 60_000;
+    const done = await call('/api/focus/complete', { body: { round: 4 }, cookie });
+    assert.equal(done.data.round, expectRound);
+    assert.deepEqual(done.data.last, { round: nextRound(expectRound), at: clock.now });
+    clock.now += 5 * 60_000;
+  };
+  assert.equal((await call('/api/focus/active', { cookie })).data.last, null);
+  await fish(1);
+  await fish(2);
+  // Giving up keeps the round.
+  await call('/api/focus/start', { body: { minutes: 15 }, cookie });
+  await call('/api/focus/cancel', { body: {}, cookie });
+  await fish(3);
+  await fish(4);
+  await fish(1);
+  assert.equal((await call('/api/focus/active', { cookie })).data.last.round, 2);
+  clock.now += ROUND_GAP_MS;
+  await fish(1);
+  assert.equal((await call('/api/export', { cookie })).data.account.round.round, 2);
+  // Two claims racing move the round on only once.
+  await call('/api/focus/start', { body: { minutes: 15 }, cookie });
+  clock.now += 15 * 60_000;
+  await Promise.all(Array.from({ length: 6 }, () => call('/api/focus/complete', { body: {}, cookie })));
+  assert.equal((await call('/api/focus/active', { cookie })).data.last.round, 3);
 });
 
 test('the server rolls with the real session length, and the guarantee holds through the API', async () => {

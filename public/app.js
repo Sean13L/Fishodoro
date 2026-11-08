@@ -1,5 +1,5 @@
 import { api, createAccount } from './account.js';
-import { fishName, fishWeight, guaranteedRarity, rarityOdds, rarityOf, RARITIES, rollFish, SIZES, sizeOf, SPECIES } from './fish.js';
+import { BOOSTED_FROM, fishName, fishWeight, guaranteedRarity, nextRound, rarityOdds, rarityOf, RARITIES, rollFish, roundAt, roundBoost, ROUNDS, SIZES, sizeOf, SPECIES } from './fish.js';
 import { CATALOG, fishPrice, inSlot, RARITY_VALUE, SIZE_MULTIPLIER } from './market.js';
 import { ANGLERS, cleanPrefs, DEFAULT_PREFS, FOCUS_MINUTES, isFocusLength, keepOwned, LAYOUTS, MAX_FOCUS, MIN_FOCUS, SCENES } from './options.js';
 import { fanfareMs, setSound, sfx, unlockAudio } from './sfx.js';
@@ -83,7 +83,8 @@ function describeWorld() {
 }
 
 // --- Timer. Modes: idle, focus, paused, reeling, stuck (claim failed), break, breakPaused ---
-const S = { mode: 'idle', endsAt: 0, left: 0, minutes: prefs.focus, round: 1, startedAt: 0, spokenMinute: 0, fish: null };
+// round is the current session's round; last is { round, at } from the last catch (see roundAt).
+const S = { mode: 'idle', endsAt: 0, left: 0, minutes: prefs.focus, round: 1, last: null, startedAt: 0, spokenMinute: 0, fish: null };
 let queue = [];
 let minuteMs = 60000; // The server shortens this only under its local-only fast test timer.
 const after = (ms, fn) => queue.push({ at: Date.now() + ms, fn });
@@ -92,7 +93,7 @@ const isBusy = () => S.mode !== 'idle';
 const owner = () => (account.user() ? 'user' : 'guest');
 function persistTimer() {
   try {
-    sessionStorage.setItem(TIMER, JSON.stringify({ mode: S.mode, endsAt: S.endsAt, left: S.left, minutes: S.minutes, round: S.round, startedAt: S.startedAt, owner: owner() }));
+    sessionStorage.setItem(TIMER, JSON.stringify({ mode: S.mode, endsAt: S.endsAt, left: S.left, minutes: S.minutes, round: S.round, last: S.last, startedAt: S.startedAt, owner: owner() }));
   } catch { /* Timer still works, it just won't survive a reload. */ }
 }
 function loadTimer() {
@@ -107,18 +108,25 @@ const LABELS = {
   stuck: ['Fish on the line', 'Reel it in'], break: ['Break', 'Pause'], breakPaused: ['Break paused', 'Resume'],
 };
 
-const breakMinutes = () => (S.round === 4 ? 15 : S.minutes >= 45 ? 10 : 5);
+const breakMinutes = () => (S.round === ROUNDS ? 15 : S.minutes >= 45 ? 10 : 5);
 const format = (ms) => {
   const total = Math.max(0, Math.ceil(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
 
-function perkText(minutes) {
-  const odds = rarityOdds(minutes);
+const isRound = (n) => Number.isInteger(n) && n >= 1 && n <= ROUNDS;
+const cleanLast = (last) => (last && isRound(last.round) && Number.isFinite(last.at) ? { round: last.round, at: last.at } : null);
+// While idle, the round is the one the next session would start in, so it drops back to 1 after a long gap.
+const shownRound = () => (S.mode === 'idle' ? roundAt(S.last, Date.now()) : S.round);
+const boostedName = RARITIES.find((r) => r.id === BOOSTED_FROM).name;
+
+function perkText(minutes, round) {
+  const odds = rarityOdds(minutes, round);
   const legendary = odds.slice(4).reduce((sum, r) => sum + r.odds, 0);
   const floor = guaranteedRarity(minutes);
   const start = floor ? `${minutes} minutes guarantees ${odds.find((r) => r.id === floor).name} or better.` : 'Focus for 30 minutes to guarantee Uncommon or better.';
-  return `${start} Chance of Legendary or rarer: ${legendary / 100}%.`;
+  const bonus = round > 1 ? ` Round ${round} bonus: ${boostedName} and rarer x${roundBoost(round)}.` : '';
+  return `${start}${bonus} Chance of Legendary or rarer: ${legendary / 100}%.`;
 }
 
 function render() {
@@ -133,8 +141,9 @@ function render() {
   const stop = $('#stop');
   stop.hidden = mode === 'idle' || mode === 'reeling' || mode === 'stuck';
   stop.textContent = mode === 'break' || mode === 'breakPaused' ? 'Skip break' : 'Give up';
-  $('#focus-perk').textContent = perkText(mode === 'idle' ? prefs.focus : S.minutes);
-  $('#round').textContent = `Round ${S.round} of 4${minuteMs < 60000 ? ' (fast test timer)' : ''}`;
+  const round = shownRound();
+  $('#focus-perk').textContent = perkText(mode === 'idle' ? prefs.focus : S.minutes, round);
+  $('#round').textContent = `Round ${round} of ${ROUNDS}${minuteMs < 60000 ? ' (fast test timer)' : ''}`;
   document.querySelectorAll('input[name=focus]').forEach((r) => { r.disabled = mode !== 'idle'; });
   $('#focus-custom').disabled = mode !== 'idle';
   document.title = mode === 'idle' ? 'Fishodoro' : `${text} ${LABELS[mode][0]} · Fishodoro`;
@@ -154,9 +163,10 @@ async function startFocus() {
   try {
     if (account.user()) {
       const { active } = await api('/api/focus/start', { minutes: prefs.focus });
-      beginFocus(active.minutes, active.remainingMs, active.startedAt);
+      beginFocus(active.minutes, active.remainingMs, active.startedAt, active.round);
     } else {
-      beginFocus(prefs.focus, prefs.focus * minuteMs, Date.now());
+      const startedAt = Date.now();
+      beginFocus(prefs.focus, prefs.focus * minuteMs, startedAt, roundAt(S.last, startedAt));
     }
     sfx.cast();
     announce(`Focus started: ${S.minutes} minutes.`);
@@ -166,8 +176,9 @@ async function startFocus() {
   }
 }
 
-function beginFocus(minutes, remainingMs, startedAt) {
+function beginFocus(minutes, remainingMs, startedAt, round) {
   S.minutes = minutes;
+  S.round = round;
   S.startedAt = startedAt;
   S.endsAt = Date.now() + remainingMs;
   S.spokenMinute = 0;
@@ -188,9 +199,14 @@ async function claim() {
   try {
     let fish;
     if (account.user()) {
-      ({ fish } = await api('/api/focus/complete', {}));
+      let round, last;
+      ({ fish, round, last } = await api('/api/focus/complete', {}));
+      S.round = round;
+      S.last = last;
     } else {
-      fish = rollFish((n) => Math.floor(Math.random() * n), S.minutes);
+      fish = rollFish((n) => Math.floor(Math.random() * n), S.minutes, S.round);
+      S.last = { round: nextRound(S.round), at: Date.now() };
+      persistTimer();
       guestFish.unshift({ ...fish, caught_at: Date.now() });
       if (allowsPrefs()) local.set(GUEST_FISH, JSON.stringify(guestFish));
     }
@@ -230,7 +246,6 @@ function startBreak() {
 
 function finishBreak(silent = false) {
   if (!silent) { sfx.breakEnd(); announce('Break over. Ready for another cast?'); }
-  S.round = S.round === 4 ? 1 : S.round + 1;
   toIdle();
 }
 
@@ -296,11 +311,19 @@ async function resume() {
   queue = [];
   const saved = loadTimer();
   const mine = saved?.owner === owner() ? saved : null;
-  if (mine) S.round = [1, 2, 3, 4].includes(mine.round) ? mine.round : 1;
+  if (mine) {
+    S.round = isRound(mine.round) ? mine.round : 1;
+    S.last = cleanLast(mine.last);
+  }
   if (account.user()) {
     let active = null;
-    try { ({ active } = await api('/api/focus/active')); } catch { /* Falls through to idle. */ }
+    try {
+      let last;
+      ({ active, last } = await api('/api/focus/active'));
+      S.last = cleanLast(last); // The server's round wins over this tab's copy.
+    } catch { /* Falls through to idle. */ }
     if (active) {
+      S.round = active.round;
       const same = mine && mine.startedAt === active.startedAt && (mine.mode === 'focus' || mine.mode === 'paused');
       S.minutes = active.minutes;
       S.startedAt = active.startedAt;
@@ -596,6 +619,10 @@ function fillOdds() {
   const tables = lengths.map(rarityOdds);
   $('#odds-rarity-head').replaceChildren(el('tr', {}, el('th', { scope: 'col', textContent: 'Rarity' }), ...lengths.map((m) => el('th', { scope: 'col', textContent: `${m} min` }))));
   $('#odds-rarity').replaceChildren(...RARITIES.map((r, i) => row(r.name, ...tables.map((table) => percent(table[i].odds)))));
+  const from = RARITIES.findIndex((r) => r.id === BOOSTED_FROM);
+  const boosted = (minutes, round) => rarityOdds(minutes, round).slice(from).reduce((sum, r) => sum + r.odds, 0);
+  $('#odds-round-head').replaceChildren(el('tr', {}, el('th', { scope: 'col', textContent: 'Round' }), ...lengths.map((m) => el('th', { scope: 'col', textContent: `${m} min` }))));
+  $('#odds-round').replaceChildren(...Array.from({ length: ROUNDS }, (_, i) => row(`Round ${i + 1} (x${roundBoost(i + 1)})`, ...lengths.map((m) => percent(boosted(m, i + 1))))));
 }
 $('#odds-size').append(...SIZES.map((s) => row(s.name, percent(s.odds), `${s.min / 10}–${s.max / 10} lb`)));
 $('#sell-rarity').append(...RARITIES.map((r) => row(r.name, `${RARITY_VALUE[r.id]} coins`)));
@@ -634,6 +661,7 @@ const account = createAccount({
     }
     showCoins();
     S.round = 1;
+    S.last = null;
     await resume();
   },
 });

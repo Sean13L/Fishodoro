@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS focus (
   minutes INTEGER NOT NULL,
   started_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS rounds (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  round INTEGER NOT NULL,
+  at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS catches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -57,7 +62,7 @@ CREATE TABLE IF NOT EXISTS unlocks (
 `;
 
 const WEEK = 7 * 864e5;
-const USER_TABLES = ['focus', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks'];
+const USER_TABLES = ['focus', 'rounds', 'catches', 'tokens', 'recovery', 'sessions', 'wallets', 'unlocks'];
 
 const plain = ({ columns, rows }) => rows.map((row) => Object.fromEntries(columns.map((c) => [c, row[c]])));
 
@@ -82,6 +87,7 @@ export function wrapClient(client) {
         ['DELETE FROM tokens WHERE expires_at < ?', now],
         ['DELETE FROM attempts WHERE at < ?', now - 864e5],
         ['DELETE FROM focus WHERE started_at + minutes * 60000 + 864e5 < ?', now],
+        ['DELETE FROM rounds WHERE at < ?', now - 864e5],
         ...USER_TABLES.map((table) => [`DELETE FROM ${table} WHERE user_id IN (${stale})`, now - WEEK]),
         ['DELETE FROM users WHERE verified = 0 AND created_at < ?', now - WEEK],
       ]);

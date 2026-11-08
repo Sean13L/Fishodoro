@@ -31,21 +31,40 @@ const BASE_MINUTES = 25;
 
 export const guaranteedRarity = (minutes) => GUARANTEES.findLast((g) => minutes >= g.minutes)?.rarity ?? null;
 
-// Each tier above the guarantee scales with session length. The guaranteed tier takes what's left,
-// and tiers below it can't be caught, so the table always adds up to exactly 10,000.
-export function rarityOdds(minutes) {
+// A set is 4 rounds. Each round doubles the odds of Epic and rarer: x1, x2, x4, x8.
+export const ROUNDS = 4;
+export const BOOSTED_FROM = 'epic';
+export const roundBoost = (round) => 2 ** (round - 1);
+// The round after a catch. Round 4 starts a new set.
+export const nextRound = (round) => (round % ROUNDS) + 1;
+// The set carries on only if the next session starts within an hour of the last catch.
+export const ROUND_GAP_MS = 60 * 60_000;
+// last is { round, at }: the round the next session would be, and when the last fish was caught.
+export const roundAt = (last, startedAt) => (last && startedAt - last.at <= ROUND_GAP_MS ? last.round : 1);
+// When boosted odds would overflow, tiers above the guarantee shrink together to share 90%,
+// so the guaranteed tier always keeps at least 10%.
+const MAX_ABOVE_FLOOR = 9000;
+
+// Each tier above the guarantee scales with session length, and Epic and up also with the round.
+// The guaranteed tier takes what's left, and tiers below it can't be caught, so the table always adds up to exactly 10,000.
+export function rarityOdds(minutes, round = 1) {
   const floor = Math.max(0, RARITIES.findIndex((r) => r.id === guaranteedRarity(minutes)));
-  const scaled = RARITIES.map((r, i) => (i > floor ? Math.round((r.odds * minutes) / BASE_MINUTES) : 0));
+  const boostFrom = RARITIES.findIndex((r) => r.id === BOOSTED_FROM);
+  const raw = RARITIES.map((r, i) => (i > floor ? (r.odds * minutes * (i >= boostFrom ? roundBoost(round) : 1)) / BASE_MINUTES : 0));
+  const total = raw.reduce((sum, odds) => sum + odds, 0);
+  const squeeze = total > MAX_ABOVE_FLOOR ? MAX_ABOVE_FLOOR / total : 1;
+  // Rounding down when squeezed keeps the shrunk tiers from adding up to a hair over 90%.
+  const scaled = raw.map((odds) => (squeeze < 1 ? Math.floor(odds * squeeze) : Math.round(odds)));
   scaled[floor] = 10000 - scaled.reduce((sum, odds) => sum + odds, 0);
   return RARITIES.map((r, i) => ({ ...r, odds: scaled[i] }));
 }
 
-// rand(n) must return a uniform integer in [0, n). minutes is the length of the finished session.
-export function rollFish(rand, minutes) {
+// rand(n) must return a uniform integer in [0, n). minutes is the length of the finished session, round is 1 to 4.
+export function rollFish(rand, minutes, round = 1) {
   const size = pick(SIZES, rand(10000));
   return {
     species: SPECIES[rand(SPECIES.length)].id,
-    rarity: pick(rarityOdds(minutes), rand(10000)).id,
+    rarity: pick(rarityOdds(minutes, round), rand(10000)).id,
     size: size.id,
     weight: size.min + rand(size.max - size.min + 1),
   };
